@@ -1,4 +1,4 @@
-import { DFile, IPFSHash, IPFSProvider } from "./dfile";
+import { AppendOnlyDFile, IPFSHash, IPFSProvider, MutableDFile } from "./dfile";
 import { of } from "ipfs-only-hash";
 
 class DummyIPFSProvider implements IPFSProvider {
@@ -27,35 +27,55 @@ const allVotes = [
   { voteContent: "hi", sig: "b994" },
 ];
 
-describe("DFile", () => {
-  async function writeAndReadFromStorage(voteData: VoteData[], previousHash: IPFSHash | null, ipfsProvider: IPFSProvider) {
-    const df = new DFile<VoteData>(previousHash, ipfsProvider);
+describe("AppendOnlyDFile", () => {
+  async function writeAndReadFromStorage(
+    voteData: VoteData[],
+    previousHash: IPFSHash | null,
+    ipfsProvider: IPFSProvider
+  ) {
+    const df = new AppendOnlyDFile<VoteData>(previousHash, ipfsProvider);
     df.appendData(...voteData);
-    const {hash} = await df.write();
-    
+    const { hash } = await df.write();
+
     return {
-        storedDf: (await DFile.from<VoteData>(hash, ipfsProvider)),
-        hash
-    }
+      storedDf: await AppendOnlyDFile.from<VoteData>(hash, ipfsProvider),
+      hash,
+    };
   }
 
   it("Reads and merges from storage", async () => {
     const ipfsProv = new DummyIPFSProvider();
 
-    const {storedDf: df1, hash: h1} = await writeAndReadFromStorage(allVotes.slice(0,2), null, ipfsProv);
-    await expect(df1.readMerge()).resolves.toEqual(allVotes.slice(0,2).reverse())
+    const { storedDf: df1, hash: h1 } = await writeAndReadFromStorage(
+      allVotes.slice(0, 2),
+      null,
+      ipfsProv
+    );
+    await expect(df1.readMerge()).resolves.toEqual(
+      allVotes.slice(0, 2).reverse()
+    );
 
-    const {storedDf: df2, hash: h2} = await writeAndReadFromStorage(allVotes.slice(2,3), h1, ipfsProv);
-    await expect(df2.readMerge()).resolves.toEqual(allVotes.slice(0,3).reverse())
-    
-    const {storedDf: df3} = await writeAndReadFromStorage(allVotes.slice(3,), h2, ipfsProv);
-    await expect(df3.readMerge()).resolves.toEqual(allVotes.slice().reverse())
+    const { storedDf: df2, hash: h2 } = await writeAndReadFromStorage(
+      allVotes.slice(2, 3),
+      h1,
+      ipfsProv
+    );
+    await expect(df2.readMerge()).resolves.toEqual(
+      allVotes.slice(0, 3).reverse()
+    );
+
+    const { storedDf: df3 } = await writeAndReadFromStorage(
+      allVotes.slice(3),
+      h2,
+      ipfsProv
+    );
+    await expect(df3.readMerge()).resolves.toEqual(allVotes.slice().reverse());
   });
 
   it("Written file should throw when appended", async () => {
     const hashProv = new DummyIPFSProvider();
-    const df = new DFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0,2));
+    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
+    df.appendData(...allVotes.slice(0, 2));
     await df.write();
     expect(() => {
       df.appendData(allVotes[2]);
@@ -64,20 +84,41 @@ describe("DFile", () => {
 
   it("Unlocked file should throw when trying to read merge", async () => {
     const hashProv = new DummyIPFSProvider();
-    const df = new DFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0,2));
+    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
+    df.appendData(...allVotes.slice(0, 2));
     await expect(df.readMerge()).rejects.toThrowError(
       "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
     );
   });
-  
+
   it("Unlocked file should throw when trying to write twice", async () => {
     const hashProv = new DummyIPFSProvider();
-    const df = new DFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0,2));
+    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
+    df.appendData(...allVotes.slice(0, 2));
     await df.write();
     await expect(df.write()).rejects.toThrowError(
       "Cannot write an already locked file"
     );
+  });
+});
+
+describe("MutableDFile", () => {
+  it("Reads and merges from storage", async () => {
+    const ipfsProv = new DummyIPFSProvider();
+
+    const df = new MutableDFile<string>(null, ipfsProv);
+
+    df.mergeData({ someKey: "XXXzzz", myKey: "zzzTTT" });
+    df.mergeData({ anotherKey: "zzz" });
+
+    const { hash } = await df.write();
+    const sdf = await MutableDFile.from<VoteData>(hash, ipfsProv);
+    const data = sdf.readLatest();
+
+    expect(data).toEqual({
+      someKey: "XXXzzz",
+      myKey: "zzzTTT",
+      anotherKey: "zzz",
+    });
   });
 });
