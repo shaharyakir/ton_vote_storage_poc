@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "ipfs-only-hash": "^4.0.0",
+    "jest": "^28.1.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^28.1.4",
+    "ts-jest": "^28.0.5"
+  }
+}
