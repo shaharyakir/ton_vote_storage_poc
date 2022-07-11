@@ -58,7 +58,7 @@ export class DFile<T> {
 
   appendData(d: T) {
     if (this.#hash) throw new Error("File was already locked");
-    this.#data.push(d);
+    this.#data.unshift(d);
   }
 
   async readMerge(): Promise<T[]> {
