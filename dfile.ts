@@ -14,6 +14,7 @@ type WriteResponse = {
   hash: IPFSHash;
 };
 
+// should use baseX instead of flat out JSON.stringify
 // T should be serializable as JSON
 export class AppendOnlyDFile<T> {
   #prev: IPFSHash | null;

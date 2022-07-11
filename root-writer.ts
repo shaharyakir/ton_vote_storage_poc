@@ -38,6 +38,7 @@ export class RootWriter {
     this.#ipfsProvider = ipfsProvider;
     this.#bchainProvider = bchainProvider;
     this.#rootContract = rootContract;
+   
   }
 
   // TODO perhaps should be static .of() and avoid constructor
@@ -78,23 +79,24 @@ export class RootWriter {
 
   // TODO if changed etc.
   async closeBlock() {
-    const newStuff: Record<string, AppendOnlyDFile<any>> = {};
+    const newDfiles: Record<string, AppendOnlyDFile<any>> = {};
     const mempoolContents = this.#mempool.dump();
+    if (mempoolContents.length === 0) return
 
     mempoolContents.forEach(([t, k, v]) => {
-      if (!newStuff[k]) {
-        newStuff[k] = new AppendOnlyDFile(
+      if (!newDfiles[k]) {
+        newDfiles[k] = new AppendOnlyDFile(
           this.#topicsRootDFile.readLatest()[k],
           this.#ipfsProvider
         );
       }
-      newStuff[k].appendData(v);
+      newDfiles[k].appendData(v);
     });
 
     // throw new Error(JSON.stringify(newStuff))
 
     const updatedHashes = await Promise.all(
-      Object.entries(newStuff).map(([k, v]) => {
+      Object.entries(newDfiles).map(([k, v]) => {
         // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
         return v.write().then(({ hash }) => [k, hash]);
       })

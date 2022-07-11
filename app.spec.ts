@@ -37,22 +37,31 @@ describe("App", () => {
       "DUMMY"
     );
     await vapp.readAndIndexAllData();
-    vapp.submitProposal({ expiry: new Date().getTime(), name: "My proposal" });
-    vapp.submitProposal({ expiry: new Date().getTime(), name: "My proposal #2" });
-    vapp.submitVote("My proposal #2", {sig: "123", vote: true})
+    vapp.addProject({name: "aave"});
+    vapp.addProject({name: "compound"});
+    vapp.submitProposal("aave", { expiry: new Date().getTime(), name: "My proposal" });
+    await vapp['_rootWriter'].closeBlock()
+    await vapp['_rootWriter'].closeBlock()
+    await vapp['_rootWriter'].closeBlock()
+    vapp.submitProposal("aave", { expiry: new Date().getTime(), name: "My proposal #2" });
+    await vapp['_rootWriter'].closeBlock()
+    vapp.submitVote("aave", "My proposal #2", {sig: "123", vote: true})
 
     await vapp['_rootWriter'].closeBlock()
 
 
-    vapp.submitProposal({ expiry: new Date().getTime(), name: "My proposal #3" });
-    vapp.submitVote("My proposal #2", {sig: "1234", vote: true})
+    vapp.submitProposal("compound", { expiry: new Date().getTime(), name: "My proposal #3" });
+    await vapp['_rootWriter'].closeBlock()
+    vapp.submitVote("aave", "My proposal #2", {sig: "1234", vote: true})
     await vapp['_rootWriter'].closeBlock()
 
     const x = await vapp['_rootWriter'].getTopicsByPrefix("")
-    const y = await x["voting_app_proposals"].readMerge();
+    // const y = await x["voting_app_aave_proposals"].readMerge();
 
     await vapp.readAndIndexAllData();
 
     console.log(JSON.stringify(ipfsProv.myData, null, 3))
+
+    console.log(Object.keys(ipfsProv.myData).length)
   });
 });
