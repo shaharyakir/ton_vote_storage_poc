@@ -43,6 +43,7 @@ export class DFile<T> {
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
   async write(): Promise<WriteResponse<T>> {
+    if (this.#hash) throw new Error("File was already locked");
     const fileContents: FileContents<T> = {
       data: this.#data,
       prev: this.#prev,

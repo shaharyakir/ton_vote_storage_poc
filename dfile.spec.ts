@@ -43,8 +43,17 @@ describe("dfile", () => {
       prev: x.hash,
     });
 
-    const fullVC = await df2.readMerge();
+    const df3 = new DFile<VoteData>(x2.hash, hashProv);
+    df3.appendData({ koko: "4", moko: "999" });
+    const x3 = await df3.write();
+    expect(x3.contents).toEqual({
+      data: [{ koko: "4", moko: "999" }],
+      prev: x2.hash,
+    });
+
+    const fullVC = await df3.readMerge();
     expect(fullVC).toEqual([
+      { koko: "4", moko: "999" },
       { koko: "2", moko: "3" },
       { koko: "hi", moko: "bo" },
       { koko: "zo", moko: "co" },
