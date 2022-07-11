@@ -55,13 +55,14 @@ export class RootWriter {
       this.#ipfsProvider
     );
 
-    this.#topicsDFiles = Object.fromEntries(
-      Object.entries(this.#topicsRootDFile.readLatest()).map(([k, v]) => [
-        k,
-        new AppendOnlyDFile(v, this.#ipfsProvider),
-      ])
-    );
-
+    // this.#topicsDFiles = Object.fromEntries(
+    //   Object.entries(this.#topicsRootDFile.readLatest()).map(([k, v]) => [
+    //     k,
+    //     new AppendOnlyDFile(v, this.#ipfsProvider),
+    //   ])
+    // );
+    
+    this.#topicsDFiles = this.#topicsRootDFile.readLatest();
     this.#mempool = new MemPool();
   }
 
@@ -79,7 +80,7 @@ export class RootWriter {
 
   // TODO if changed etc.
   async closeBlock() {
-    const newDfiles: Record<string, AppendOnlyDFile<any>> = {};
+    const newDfiles: Record<string, any> = {};
     const mempoolContents = this.#mempool.dump();
     if (mempoolContents.length === 0) return
 

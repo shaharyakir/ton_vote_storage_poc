@@ -32,62 +32,52 @@ TODO(thoughts):
 
 // should use baseX instead of flat out JSON.stringify
 // T should be serializable as JSON
-export class AppendOnlyDFile<T> {
-  #prev: IPFSHash | null;
-  #data: T[] = [];
-  #ipfsProvider: IPFSProvider;
-  #hash: IPFSHash | null;
+export class AppendOnlyDFile {
+  // #prev: IPFSHash | null;
+  // #data: T[] = [];
+  // #ipfsProvider: IPFSProvider;
+  // #hash: IPFSHash | null;
 
-  constructor(prev: IPFSHash | null, h: IPFSProvider) {
-    this.#ipfsProvider = h;
-    this.#prev = prev;
-  }
+  // constructor(prev: IPFSHash | null, h: IPFSProvider) {
+  //   this.#ipfsProvider = h;
+  //   this.#prev = prev;
+  // }
 
   // TODO probably should be removed
-  static async from<T>(hash: IPFSHash, h: IPFSProvider): Promise<AppendOnlyDFile<T>> {
-    const newDFile = new AppendOnlyDFile<T>(null, h);
-    const fc = await newDFile.#readFile(hash);
-    newDFile.#data = fc.data;
-    newDFile.#prev = fc.prev;
-    newDFile.#hash = hash;
-    return newDFile;
-  }
-
-  async #readFile(hash: IPFSHash): Promise<FileContents<T[]>> {
-    const s = await this.#ipfsProvider.read(hash);
-    return JSON.parse(s) as FileContents<T[]>;
-  }
+  // static async from<T>(hash: IPFSHash, h: IPFSProvider): Promise<AppendOnlyDFile<T>> {
+  //   const newDFile = new AppendOnlyDFile<T>(null, h);
+  //   const fc = await newDFile.#readFile(hash);
+  //   newDFile.#data = fc.data;
+  //   newDFile.#prev = fc.prev;
+  //   newDFile.#hash = hash;
+  //   return newDFile;
+  // }
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
-  async write(): Promise<WriteResponse> {
-    if (this.#hash) throw new Error("Cannot write an already locked file");
+  static async write<T>(previousHash: IPFSHash | null, ...d: T[], ipfsProvider: IPFSProvider): Promise<WriteResponse> {
     const fileContents: FileContents<T[]> = {
-      data: this.#data,
-      prev: this.#prev,
+      data: d,
+      prev: previousHash,
     };
-    const h = await this.#ipfsProvider.write(JSON.stringify(fileContents));
-    this.#hash = h;
+    const h = await ipfsProvider.write(JSON.stringify(fileContents));
     return {
       hash: h,
     };
   }
 
-  appendData(...d: T[]) {
-    if (this.#hash) throw new Error("Cannot append data to a locked file");
-    this.#data = [...d.reverse(), ...this.#data];
-  }
+  // appendData(...d: T[]) {
+  //   if (this.#hash) throw new Error("Cannot append data to a locked file");
+  //   this.#data = [...d.reverse(), ...this.#data];
+  // }
 
-  async readMerge(): Promise<T[]> {
-    // TODO not sure about this if (!this.#hash)
-    //   throw new Error(
-    //     "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
-    //   );
-
-    let contents: T[] = this.#data;
-    let hashToRead: string | null = this.#prev;
+  static async read<T>(previousHash: IPFSHash | null, nonPersistentData?: T[], ipfsProvider: IPFSProvider): Promise<T[]> {
+    
+    let contents: T[] = nonPersistentData ?? [];
+    let hashToRead: string | null = previousHash;
 
     while (hashToRead) {
-      const fc = await this.#readFile(hashToRead);
+      const s = await ipfsProvider.read(hashToRead);
+      const fc = JSON.parse(s) as FileContents<T[]>;
       hashToRead = fc.prev;
       contents = contents.concat(fc.data);
     }
