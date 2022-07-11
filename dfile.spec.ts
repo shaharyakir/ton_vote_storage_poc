@@ -1,7 +1,7 @@
 import { DFile, IPFSHash, IPFSProvider } from "./dfile";
 import { of } from "ipfs-only-hash";
 
-class DummyHushProvider implements IPFSProvider {
+class DummyIPFSProvider implements IPFSProvider {
   myData = {};
 
   async write(data: string): Promise<IPFSHash> {
@@ -27,37 +27,57 @@ const allVotes = [
   { voteContent: "hi", sig: "b994" },
 ];
 
-describe("dfile", () => {
-  it("does smth", async () => {
-    const hashProv = new DummyHushProvider();
+describe("DFile", () => {
+  async function writeAndReadFromStorage(voteData: VoteData[], previousHash: IPFSHash | null, ipfsProvider: IPFSProvider) {
+    const df = new DFile<VoteData>(previousHash, ipfsProvider);
+    df.appendData(...voteData);
+    const {hash} = await df.write();
+    
+    return {
+        storedDf: (await DFile.from<VoteData>(hash, ipfsProvider)),
+        hash
+    }
+  }
+
+  it("Reads and merges from storage", async () => {
+    const ipfsProv = new DummyIPFSProvider();
+
+    const {storedDf: df1, hash: h1} = await writeAndReadFromStorage(allVotes.slice(0,2), null, ipfsProv);
+    await expect(df1.readMerge()).resolves.toEqual(allVotes.slice(0,2).reverse())
+
+    const {storedDf: df2, hash: h2} = await writeAndReadFromStorage(allVotes.slice(2,3), h1, ipfsProv);
+    await expect(df2.readMerge()).resolves.toEqual(allVotes.slice(0,3).reverse())
+    
+    const {storedDf: df3} = await writeAndReadFromStorage(allVotes.slice(3,), h2, ipfsProv);
+    await expect(df3.readMerge()).resolves.toEqual(allVotes.slice().reverse())
+  });
+
+  it("Written file should throw when appended", async () => {
+    const hashProv = new DummyIPFSProvider();
     const df = new DFile<VoteData>(null, hashProv);
-    df.appendData(allVotes[0]);
-    df.appendData(allVotes[1]);
-    const x = await df.write();
-    expect(x.hash).toEqual("Qmcevz92Rp77du4qDFXnynYT6CMtdgbo3xLbAguLgyh5Ew");
-    expect(x.contents).toEqual({
-      data: allVotes.slice(0, 2).reverse(),
-      prev: null,
-    });
+    df.appendData(...allVotes.slice(0,2));
+    await df.write();
+    expect(() => {
+      df.appendData(allVotes[2]);
+    }).toThrowError("Cannot append data to a locked file");
+  });
 
-    const df2 = new DFile<VoteData>(x.hash, hashProv);
-    df2.appendData(allVotes[2]);
-    const x2 = await df2.write();
-    expect(x2.contents).toEqual({
-      data: allVotes.slice(2, 3).reverse(),
-      prev: x.hash,
-    });
-
-    const df3 = new DFile<VoteData>(x2.hash, hashProv);
-    df3.appendData(allVotes[3]);
-    df3.appendData(allVotes[4]);
-    const x3 = await df3.write();
-    expect(x3.contents).toEqual({
-      data: allVotes.slice(3).reverse(),
-      prev: x2.hash,
-    });
-
-    const fullVC = await df3.readMerge();
-    expect(fullVC).toEqual(allVotes.reverse());
+  it("Unlocked file should throw when trying to read merge", async () => {
+    const hashProv = new DummyIPFSProvider();
+    const df = new DFile<VoteData>(null, hashProv);
+    df.appendData(...allVotes.slice(0,2));
+    await expect(df.readMerge()).rejects.toThrowError(
+      "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
+    );
+  });
+  
+  it("Unlocked file should throw when trying to write twice", async () => {
+    const hashProv = new DummyIPFSProvider();
+    const df = new DFile<VoteData>(null, hashProv);
+    df.appendData(...allVotes.slice(0,2));
+    await df.write();
+    await expect(df.write()).rejects.toThrowError(
+      "Cannot write an already locked file"
+    );
   });
 });

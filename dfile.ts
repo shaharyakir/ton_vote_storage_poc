@@ -10,8 +10,7 @@ type FileContents<T> = {
   prev: IPFSHash | null;
 };
 
-type WriteResponse<T> = {
-  contents: FileContents<T>;
+type WriteResponse = {
   hash: IPFSHash;
 };
 
@@ -42,8 +41,8 @@ export class DFile<T> {
   }
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
-  async write(): Promise<WriteResponse<T>> {
-    if (this.#hash) throw new Error("File was already locked");
+  async write(): Promise<WriteResponse> {
+    if (this.#hash) throw new Error("Cannot write an already locked file");
     const fileContents: FileContents<T> = {
       data: this.#data,
       prev: this.#prev,
@@ -52,13 +51,12 @@ export class DFile<T> {
     this.#hash = h;
     return {
       hash: h,
-      contents: fileContents,
     };
   }
 
-  appendData(d: T) {
-    if (this.#hash) throw new Error("File was already locked");
-    this.#data.unshift(d);
+  appendData(...d: T[]) {
+    if (this.#hash) throw new Error("Cannot append data to a locked file");
+    this.#data = [...d.reverse(), ...this.#data];
   }
 
   async readMerge(): Promise<T[]> {
@@ -66,6 +64,7 @@ export class DFile<T> {
       throw new Error(
         "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
       );
+
     let contents: T[] = this.#data;
     let hashToRead: string | null = this.#prev;
 
