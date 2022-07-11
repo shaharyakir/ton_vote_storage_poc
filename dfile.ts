@@ -14,6 +14,22 @@ type WriteResponse = {
   hash: IPFSHash;
 };
 
+/*
+TODO(thoughts):
+
+- Consider the lifecycle of the file:
+1. One usage for it is to close a block in the mempool
+2. Another is to construct the entire linked list from ipfs
+3. Another is to construct the entire linked list from ipfs + mempool (which feels like a "close block without persistence")? 
+   - do we really need #2?
+
+=> so perhaps there should be a: 
+   - static write method, which accepts the entire mempool data and returns the new hash
+   - static read method, which accepts a hash and returns the entire linked list. optionally it could accept the mempool data to prepend it?
+
+   so reading a single file feels redundant, and also appending
+*/
+
 // should use baseX instead of flat out JSON.stringify
 // T should be serializable as JSON
 export class AppendOnlyDFile<T> {
