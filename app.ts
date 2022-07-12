@@ -86,15 +86,15 @@ export class VotingApp {
 
   addProject(p: Project) {
     // TODO someone should validate at this point -> and how does mempool etc avoid conflicts from different writers?
-    this._rootWriter.updateTopic(this.#toTopic("projects"), p);
+    this._rootWriter.appendData(this.#toTopic("projects"), p);
   }
 
   submitProposal(projectName: string, p: Proposal) {
     // TODO someone should validate at this point -> and how does mempool etc avoid conflicts from different writers?
-    this._rootWriter.updateTopic(this.#toTopic(projectName, "proposals"), p);
+    this._rootWriter.appendData(this.#toTopic(projectName, "proposals"), p);
   }
 
   submitVote(projectName: string, proposalName: string, v: Vote) {
-    this._rootWriter.updateTopic(this.#toTopic(projectName, proposalName), v);
+    this._rootWriter.appendData(this.#toTopic(projectName, proposalName), v);
   }
 }
