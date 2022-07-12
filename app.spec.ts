@@ -31,37 +31,50 @@ class DummyBChainProvider implements BChainProvider {
 describe("App", () => {
   it("Runs the app", async () => {
     const ipfsProv = new DummyIPFSProvider();
-    const vapp = new VotingApp(
-      ipfsProv,
-      new DummyBChainProvider(),
-      "DUMMY"
-    );
-    await vapp.readAndIndexAllData();
-    vapp.addProject({name: "aave"});
-    vapp.addProject({name: "compound"});
-    vapp.submitProposal("aave", { expiry: new Date().getTime(), name: "My proposal" });
-    await vapp['_rootWriter'].closeBlock()
-    await vapp['_rootWriter'].closeBlock()
-    await vapp['_rootWriter'].closeBlock()
-    vapp.submitProposal("aave", { expiry: new Date().getTime(), name: "My proposal #2" });
-    await vapp['_rootWriter'].closeBlock()
-    vapp.submitVote("aave", "My proposal #2", {sig: "123", vote: true})
+    const vapp = new VotingApp(ipfsProv, new DummyBChainProvider(), "DUMMY");
+    await vapp.initialize();
+    await vapp.readData();
+    vapp.addProject({ name: "aave" });
+    await vapp["_rootWriter"].closeBlock();
+    vapp.addProject({ name: "uniswap" });
+    vapp.addProject({ name: "compound" });
+    vapp.submitProposal("aave", {
+      expiry: new Date().getTime(),
+      name: "My proposal",
+    });
 
-    await vapp['_rootWriter'].closeBlock()
+    // await vapp['_rootWriter'].closeBlock()
+    // await vapp['_rootWriter'].closeBlock()
+    vapp.submitProposal("aave", {
+      expiry: new Date().getTime(),
+      name: "My proposal #2",
+    });
+    await vapp["_rootWriter"].closeBlock();
+    vapp.submitVote("aave", "My proposal #2", { sig: "123", vote: true });
 
+    // await vapp['_rootWriter'].closeBlock()
 
-    vapp.submitProposal("compound", { expiry: new Date().getTime(), name: "My proposal #3" });
-    await vapp['_rootWriter'].closeBlock()
-    vapp.submitVote("aave", "My proposal #2", {sig: "1234", vote: true})
-    await vapp['_rootWriter'].closeBlock()
+    vapp.submitProposal("compound", {
+      expiry: new Date().getTime(),
+      name: "My proposal #3",
+    });
+    // await vapp['_rootWriter'].closeBlock()
+    vapp.submitVote("aave", "My proposal #2", { sig: "1234", vote: true });
+    await vapp["_rootWriter"].closeBlock();
 
-    const x = await vapp['_rootWriter'].getTopicsByPrefix("")
+    // const x = await vapp['_rootWriter'].getTopicsByPrefix("")
     // const y = await x["voting_app_aave_proposals"].readMerge();
 
-    await vapp.readAndIndexAllData();
+    await vapp.readData();
 
-    console.log(JSON.stringify(ipfsProv.myData, null, 3))
+    vapp.submitVote("aave", "My proposal #2", { sig: "12345", vote: true });
+    await vapp["_rootWriter"].closeBlock();
+    
+    vapp.submitVote("aave", "My proposal #2", { sig: "12387", vote: true });
+    await vapp["_rootWriter"].closeBlock();
 
-    console.log(Object.keys(ipfsProv.myData).length)
+    await vapp.readData();
+    console.log(JSON.stringify(ipfsProv.myData, null, 3));
+    console.log(Object.keys(ipfsProv.myData).length);
   });
 });

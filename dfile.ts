@@ -14,50 +14,32 @@ type WriteResponse = {
   hash: IPFSHash;
 };
 
-/*
-TODO(thoughts):
+type WriteRequest<T> = {
+  lastKnownHash: IPFSHash;
+  ipfsProvider: IPFSProvider;
+  data: T[];
+};
 
-- Consider the lifecycle of the file:
-1. One usage for it is to close a block in the mempool
-2. Another is to construct the entire linked list from ipfs
-3. Another is to construct the entire linked list from ipfs + mempool (which feels like a "close block without persistence")? 
-   - do we really need #2?
-
-=> so perhaps there should be a: 
-   - static write method, which accepts the entire mempool data and returns the new hash
-   - static read method, which accepts a hash and returns the entire linked list. optionally it could accept the mempool data to prepend it?
-
-   so reading a single file feels redundant, and also appending
-*/
+type ReadRequest = {
+  fromHash: IPFSHash;
+  toHash?: IPFSHash;
+  ipfsProvider: IPFSProvider;
+};
 
 // should use baseX instead of flat out JSON.stringify
 // T should be serializable as JSON
 export class AppendOnlyDFile {
-  // #prev: IPFSHash | null;
-  // #data: T[] = [];
-  // #ipfsProvider: IPFSProvider;
-  // #hash: IPFSHash | null;
-
-  // constructor(prev: IPFSHash | null, h: IPFSProvider) {
-  //   this.#ipfsProvider = h;
-  //   this.#prev = prev;
-  // }
-
-  // TODO probably should be removed
-  // static async from<T>(hash: IPFSHash, h: IPFSProvider): Promise<AppendOnlyDFile<T>> {
-  //   const newDFile = new AppendOnlyDFile<T>(null, h);
-  //   const fc = await newDFile.#readFile(hash);
-  //   newDFile.#data = fc.data;
-  //   newDFile.#prev = fc.prev;
-  //   newDFile.#hash = hash;
-  //   return newDFile;
-  // }
-
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
-  static async write<T>(previousHash: IPFSHash | null, ...d: T[], ipfsProvider: IPFSProvider): Promise<WriteResponse> {
+  // TODO change API
+  static async write<T>({
+    lastKnownHash,
+    ipfsProvider,
+    data,
+  }: WriteRequest<T>): Promise<WriteResponse> {
+    if (data.length === 0) throw new Error("Empty writes not allowed");
     const fileContents: FileContents<T[]> = {
-      data: d,
-      prev: previousHash,
+      data,
+      prev: lastKnownHash,
     };
     const h = await ipfsProvider.write(JSON.stringify(fileContents));
     return {
@@ -65,17 +47,11 @@ export class AppendOnlyDFile {
     };
   }
 
-  // appendData(...d: T[]) {
-  //   if (this.#hash) throw new Error("Cannot append data to a locked file");
-  //   this.#data = [...d.reverse(), ...this.#data];
-  // }
+  static async read<T>({fromHash, toHash, ipfsProvider}: ReadRequest): Promise<T[]> {
+    let contents: T[] = [];
+    let hashToRead: string | null = fromHash;
 
-  static async read<T>(previousHash: IPFSHash | null, nonPersistentData?: T[], ipfsProvider: IPFSProvider): Promise<T[]> {
-    
-    let contents: T[] = nonPersistentData ?? [];
-    let hashToRead: string | null = previousHash;
-
-    while (hashToRead) {
+    while (hashToRead && hashToRead !== toHash) {
       const s = await ipfsProvider.read(hashToRead);
       const fc = JSON.parse(s) as FileContents<T[]>;
       hashToRead = fc.prev;
@@ -87,6 +63,7 @@ export class AppendOnlyDFile {
 }
 
 // A dictionary, latest version is full and up to date.
+// TODO - remove prev
 type MutableFileContents<T> = FileContents<Record<string, T>>;
 
 export class MutableDFile<T> {
@@ -132,7 +109,7 @@ export class MutableDFile<T> {
 
   mergeData(updatedData: Record<string, T>) {
     if (this.#hash) throw new Error("Cannot update a locked file");
-    this.#data = {...this.#data, ...updatedData};
+    this.#data = { ...this.#data, ...updatedData };
   }
 
   readLatest(): Record<string, T> {
