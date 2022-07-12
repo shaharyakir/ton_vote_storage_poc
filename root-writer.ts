@@ -83,6 +83,7 @@ export class RootWriter {
   }
 
   // TODO election etc
+  // TODO flow: 1. initialize, 2. fetch data (i'm not the leader), 3. close data (i'm the leader)
   async onEpoch() {
     const mempoolContents = this.#mempool.dump();
     if (Object.keys(mempoolContents).length > 0) {
