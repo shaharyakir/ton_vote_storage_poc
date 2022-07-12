@@ -15,6 +15,8 @@ export class VotingApp {
   #ipfsProvider: IPFSProvider;
 
   appData: Record<string, any> = { projects: {} };
+  #bchainProvider: BChainProvider;
+  #rootContract: string;
 
   constructor(
     ipfsProvider: IPFSProvider,
@@ -22,15 +24,16 @@ export class VotingApp {
     rootContract: BChainAddress
   ) {
     this.#ipfsProvider = ipfsProvider;
-    this._rootWriter = new RootWriter(
-      this.#ipfsProvider,
-      bchainProvider,
-      rootContract
-    );
+    this.#bchainProvider = bchainProvider;
+    this.#rootContract = rootContract;
   }
 
   async initialize() {
-    await this._rootWriter.loadTopics();
+    this._rootWriter = await RootWriter.init(
+      this.#ipfsProvider,
+      this.#bchainProvider,
+      this.#rootContract
+    );
   }
 
   async readData() {
@@ -62,7 +65,12 @@ export class VotingApp {
 
       for (const proposal of Object.values(this.appData.projects[p])) {
         // @ts-ignore
-        proposal.votes = [...(await readTopic(this.#toTopic(p, proposal.name))) ?? [], ...proposal.votes ?? []];
+        proposal.votes = [
+          // @ts-ignore
+          ...((await readTopic(this.#toTopic(p, proposal.name))) ?? []),
+          // @ts-ignore
+          ...(proposal.votes ?? []),
+        ];
       }
     }
 

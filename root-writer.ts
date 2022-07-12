@@ -9,7 +9,12 @@ export interface BChainProvider {
   readData(contractAddr: BChainAddress): Promise<BChainData>;
 }
 
-class MemPool {
+export interface MemPool {
+  updateTopic(key: string, value: any): Promise<void>;
+  dump(): Promise<Record<string, any[]>>;
+}
+
+class InMemoryMemPool {
   #data: any[] = [];
 
   async updateTopic(key: string, value: any) {
@@ -34,7 +39,7 @@ export class RootWriter {
   #rootContract: string;
   _hash: IPFSHash;
   #topicsRootDFile: MutableDFile<IPFSHash>;
-  #mempool: MemPool;
+  #mempool: InMemoryMemPool;
   #topicsDFiles: { [k: string]: string };
 
   constructor(
@@ -45,23 +50,17 @@ export class RootWriter {
     this.#ipfsProvider = ipfsProvider;
     this.#bchainProvider = bchainProvider;
     this.#rootContract = rootContract;
+    this.#mempool = new InMemoryMemPool();
   }
 
-  // TODO perhaps should be static .of() and avoid constructor
-  async loadTopics() {
-    // TODO should throw for unpersisted data? "if isModified"
-    this._hash = (await this.#bchainProvider.readData(
-      this.#rootContract
-    )) as IPFSHash;
-
-    // TODO Do we need a reference for this? mmm..
-    this.#topicsRootDFile = await MutableDFile.from<IPFSHash>(
-      this._hash,
-      this.#ipfsProvider
-    );
-
-    this.#topicsDFiles = this.#topicsRootDFile.readLatest();
-    this.#mempool = new MemPool();
+  static async init(
+    ipfsProvider: IPFSProvider,
+    bchainProvider: BChainProvider,
+    rootContract: BChainAddress
+  ) {
+    const rw = new RootWriter(ipfsProvider, bchainProvider, rootContract);
+    await rw.onEpoch(); // TODO cron
+    return rw;
   }
 
   // TODO if fromHash==toHash
@@ -70,12 +69,12 @@ export class RootWriter {
     const storageContents = await AppendOnlyDFile.read({
       fromHash,
       toHash,
-      ipfsProvider: this.#ipfsProvider
+      ipfsProvider: this.#ipfsProvider,
     });
     const mempoolContents = this.#mempool.dump()[topic] ?? [];
     return {
       data: [...storageContents, ...mempoolContents],
-      hash: fromHash
+      hash: fromHash,
     };
   }
 
@@ -83,27 +82,40 @@ export class RootWriter {
     this.#mempool.updateTopic(key, value);
   }
 
-  // TODO if changed etc.
-  async closeBlock() {
+  // TODO election etc
+  async onEpoch() {
     const mempoolContents = this.#mempool.dump();
-    if (Object.keys(mempoolContents).length === 0) return;
+    if (Object.keys(mempoolContents).length > 0) {
+      const latestTopics = this.#topicsRootDFile.readLatest();
 
-    const latestTopics = this.#topicsRootDFile.readLatest();
+      const updatedHashes = await Promise.all(
+        Object.entries(mempoolContents).map(([k, v]) => {
+          // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
+          return AppendOnlyDFile.write({
+            lastKnownHash: latestTopics[k],
+            ipfsProvider: this.#ipfsProvider,
+            data: v,
+          }).then(({ hash }) => [k, hash]);
+        })
+      );
 
-    const updatedHashes = await Promise.all(
-      Object.entries(mempoolContents).map(([k, v]) => {
-        // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
-        return AppendOnlyDFile.write({
-          lastKnownHash: latestTopics[k],
-          ipfsProvider: this.#ipfsProvider,
-          data: v,
-        }).then(({ hash }) => [k, hash]);
-      })
-    );
+      this.#topicsRootDFile.mergeData(Object.fromEntries(updatedHashes));
+      const { hash } = await this.#topicsRootDFile.write();
+      this.#bchainProvider.update(this.#rootContract, hash);
+      this._hash = hash;
+    } else {
+      // TODO should throw for unpersisted data? "if isModified"
+      this._hash = (await this.#bchainProvider.readData(
+        this.#rootContract
+      )) as IPFSHash;
+      // TODO Do we need a reference for this? mmm..
+      this.#topicsRootDFile = await MutableDFile.from<IPFSHash>(
+        this._hash,
+        this.#ipfsProvider
+      );
+    }
 
-    this.#topicsRootDFile.mergeData(Object.fromEntries(updatedHashes));
-    const { hash } = await this.#topicsRootDFile.write();
-    this.#bchainProvider.update(this.#rootContract, hash);
-    await this.loadTopics(); // TODO improve perf etc.
+    this.#topicsDFiles = this.#topicsRootDFile.readLatest();
+    this.#mempool = new InMemoryMemPool();
   }
 }

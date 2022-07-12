@@ -95,7 +95,7 @@ export class MutableDFile<T> {
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
   async write(): Promise<WriteResponse> {
-    if (this.#hash) throw new Error("Cannot write an already locked file");
+    // if (this.#hash) throw new Error("Cannot write an already locked file");
     const fileContents: MutableFileContents<T> = {
       data: this.#data,
       prev: this.#prev,
@@ -108,7 +108,7 @@ export class MutableDFile<T> {
   }
 
   mergeData(updatedData: Record<string, T>) {
-    if (this.#hash) throw new Error("Cannot update a locked file");
+    // if (this.#hash) throw new Error("Cannot update a locked file");
     this.#data = { ...this.#data, ...updatedData };
   }
 
