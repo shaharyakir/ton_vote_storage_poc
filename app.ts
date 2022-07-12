@@ -64,8 +64,6 @@ export class VotingApp {
         // @ts-ignore
         proposal.votes = [...(await readTopic(this.#toTopic(p, proposal.name))) ?? [], ...proposal.votes ?? []];
       }
-
-      
     }
 
     console.log(JSON.stringify(this.appData, null, 3));

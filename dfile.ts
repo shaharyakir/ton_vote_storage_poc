@@ -15,7 +15,7 @@ type WriteResponse = {
 };
 
 type WriteRequest<T> = {
-  lastKnownHash: IPFSHash;
+  lastKnownHash: IPFSHash | null;
   ipfsProvider: IPFSProvider;
   data: T[];
 };
@@ -38,7 +38,7 @@ export class AppendOnlyDFile {
   }: WriteRequest<T>): Promise<WriteResponse> {
     if (data.length === 0) throw new Error("Empty writes not allowed");
     const fileContents: FileContents<T[]> = {
-      data,
+      data: data.slice().reverse(),
       prev: lastKnownHash,
     };
     const h = await ipfsProvider.write(JSON.stringify(fileContents));
