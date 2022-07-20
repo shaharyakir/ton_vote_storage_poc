@@ -5,19 +5,44 @@ export type BChainAddress = string;
 type BChainData = string;
 
 export interface BChainProvider {
-  update(arg0: string,_hash: string);
+  update(arg0: string, _hash: string);
   readData(contractAddr: BChainAddress): Promise<BChainData>;
 }
 
-class MemPool {
-  #data: any[] = [];
+type MemPoolContents = Record<string, any[]>;
 
-  async updateTopic(key: string, value: any) {
-    this.#data.push([new Date().getTime(), key, value]);
+export interface MemPool {
+  appendData(topic: string, data: any): Promise<void>;
+  dump(): Promise<MemPoolContents>;
+  getContents(): Promise<MemPoolContents>;
+}
+
+class InMemoryMemPool implements MemPool {
+  async getContents(): Promise<MemPoolContents> {
+    const dataByTopic = {};
+
+    this.#data.forEach(([_, k, v]) => {
+      if (!dataByTopic[k]) dataByTopic[k] = [];
+      dataByTopic[k].push(v);
+    });
+
+    return dataByTopic;
   }
 
-  dump() {
-    return this.#data;
+  #data: any[] = [];
+
+  async appendData(topic: string, data: any) {
+    this.#data.push([new Date().getTime(), topic, data]);
+  }
+
+  async dump(): Promise<MemPoolContents> {
+    const dataByTopic = await this.getContents();
+
+    // TODO this is a dangerous side effect, we should consider carefully what triggers clearing the mempool
+    // especially considering data keeps flowing in (distributed/async etc)
+    this.#data = [];
+
+    return dataByTopic;
   }
 }
 
@@ -27,8 +52,8 @@ export class RootWriter {
   #rootContract: string;
   _hash: IPFSHash;
   #topicsRootDFile: MutableDFile<IPFSHash>;
-  #mempool: MemPool;
-  #topicsDFiles: { [k: string]: AppendOnlyDFile<any> };
+  #mempool: InMemoryMemPool;
+  #topicsDFiles: { [k: string]: string };
 
   constructor(
     ipfsProvider: IPFSProvider,
@@ -38,73 +63,81 @@ export class RootWriter {
     this.#ipfsProvider = ipfsProvider;
     this.#bchainProvider = bchainProvider;
     this.#rootContract = rootContract;
-   
+    this.#mempool = new InMemoryMemPool();
   }
 
-  // TODO perhaps should be static .of() and avoid constructor
-  async loadTopics() {
-    // TODO should throw for unpersisted data? "if isModified"
+  static async init(
+    ipfsProvider: IPFSProvider,
+    bchainProvider: BChainProvider,
+    rootContract: BChainAddress
+  ) {
+    const rw = new RootWriter(ipfsProvider, bchainProvider, rootContract);
+    await rw.init();
+    return rw;
+  }
 
+  async init() {
+    // TODO should throw for unpersisted data? "if isModified"
     this._hash = (await this.#bchainProvider.readData(
       this.#rootContract
     )) as IPFSHash;
 
-    // TODO Do we need a reference for this? mmm..
     this.#topicsRootDFile = await MutableDFile.from<IPFSHash>(
       this._hash,
       this.#ipfsProvider
     );
-
-    this.#topicsDFiles = Object.fromEntries(
-      Object.entries(this.#topicsRootDFile.readLatest()).map(([k, v]) => [
-        k,
-        new AppendOnlyDFile(v, this.#ipfsProvider),
-      ])
-    );
-
-    this.#mempool = new MemPool();
+    this.#topicsDFiles = this.#topicsRootDFile.readLatest();
   }
 
-  getTopicsByPrefix(pfx: string) {
-    return Object.fromEntries(
-      Object.entries(this.#topicsDFiles).filter(([k]) =>
-        k.toLowerCase().startsWith(pfx.toLowerCase())
-      )
-    );
-  }
-
-  updateTopic(key: string, value: any) {
-    this.#mempool.updateTopic(key, value);
-  }
-
-  // TODO if changed etc.
-  async closeBlock() {
-    const newDfiles: Record<string, AppendOnlyDFile<any>> = {};
-    const mempoolContents = this.#mempool.dump();
-    if (mempoolContents.length === 0) return
-
-    mempoolContents.forEach(([t, k, v]) => {
-      if (!newDfiles[k]) {
-        newDfiles[k] = new AppendOnlyDFile(
-          this.#topicsRootDFile.readLatest()[k],
-          this.#ipfsProvider
-        );
-      }
-      newDfiles[k].appendData(v);
+  // TODO if fromHash==toHash
+  async getTopicContents(
+    topic: string,
+    toHash?: IPFSHash
+  ): Promise<{
+    data: any[];
+    hash: string;
+  }> {
+    const fromHash = this.#topicsDFiles[topic];
+    const storageContents = await AppendOnlyDFile.read({
+      fromHash,
+      toHash,
+      ipfsProvider: this.#ipfsProvider,
     });
+    const mempoolContents = (await this.#mempool.getContents())[topic] ?? [];
+    return {
+      data: [...storageContents, ...mempoolContents],
+      hash: fromHash,
+    };
+  }
 
-    // throw new Error(JSON.stringify(newStuff))
+  async appendData(topic: string, data: any) {
+    await this.#mempool.appendData(topic, data);
+  }
 
-    const updatedHashes = await Promise.all(
-      Object.entries(newDfiles).map(([k, v]) => {
-        // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
-        return v.write().then(({ hash }) => [k, hash]);
-      })
-    );
+  // TODO election etc
+  // TODO flow: 1. initialize, 2. fetch data (i'm not the leader), 3. close data (i'm the leader)
+  async onEpoch() {
+    const mempoolContents = await this.#mempool.dump();
+    if (Object.keys(mempoolContents).length > 0) {
+      const latestTopics = this.#topicsRootDFile.readLatest();
 
-    this.#topicsRootDFile.mergeData(Object.fromEntries(updatedHashes));
-    const { hash } = await this.#topicsRootDFile.write();
-    this.#bchainProvider.update(this.#rootContract, hash);
-    await this.loadTopics(); // TODO improve perf etc.
+      const updatedHashes = await Promise.all(
+        Object.entries(mempoolContents).map(async ([k, v]) => {
+          // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
+          const { hash } = await AppendOnlyDFile.write({
+            lastKnownHash: latestTopics[k],
+            ipfsProvider: this.#ipfsProvider,
+            data: v,
+          });
+          return [k, hash];
+        })
+      );
+
+      this.#topicsRootDFile.mergeData(Object.fromEntries(updatedHashes));
+      const { hash } = await this.#topicsRootDFile.write();
+      this.#bchainProvider.update(this.#rootContract, hash);
+      this._hash = hash;
+      this.#topicsDFiles = this.#topicsRootDFile.readLatest();
+    }
   }
 }

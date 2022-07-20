@@ -14,64 +14,46 @@ type WriteResponse = {
   hash: IPFSHash;
 };
 
+type WriteRequest<T> = {
+  lastKnownHash: IPFSHash | null;
+  ipfsProvider: IPFSProvider;
+  data: T[];
+};
+
+type ReadRequest = {
+  fromHash: IPFSHash;
+  toHash?: IPFSHash;
+  ipfsProvider: IPFSProvider;
+};
+
 // should use baseX instead of flat out JSON.stringify
 // T should be serializable as JSON
-export class AppendOnlyDFile<T> {
-  #prev: IPFSHash | null;
-  #data: T[] = [];
-  #ipfsProvider: IPFSProvider;
-  #hash: IPFSHash | null;
-
-  constructor(prev: IPFSHash | null, h: IPFSProvider) {
-    this.#ipfsProvider = h;
-    this.#prev = prev;
-  }
-
-  // TODO probably should be removed
-  static async from<T>(hash: IPFSHash, h: IPFSProvider): Promise<AppendOnlyDFile<T>> {
-    const newDFile = new AppendOnlyDFile<T>(null, h);
-    const fc = await newDFile.#readFile(hash);
-    newDFile.#data = fc.data;
-    newDFile.#prev = fc.prev;
-    newDFile.#hash = hash;
-    return newDFile;
-  }
-
-  async #readFile(hash: IPFSHash): Promise<FileContents<T[]>> {
-    const s = await this.#ipfsProvider.read(hash);
-    return JSON.parse(s) as FileContents<T[]>;
-  }
-
+export class AppendOnlyDFile {
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
-  async write(): Promise<WriteResponse> {
-    if (this.#hash) throw new Error("Cannot write an already locked file");
+  // TODO change API
+  static async write<T>({
+    lastKnownHash,
+    ipfsProvider,
+    data,
+  }: WriteRequest<T>): Promise<WriteResponse> {
+    if (data.length === 0) throw new Error("Empty writes not allowed");
     const fileContents: FileContents<T[]> = {
-      data: this.#data,
-      prev: this.#prev,
+      data: data.slice().reverse(),
+      prev: lastKnownHash,
     };
-    const h = await this.#ipfsProvider.write(JSON.stringify(fileContents));
-    this.#hash = h;
+    const h = await ipfsProvider.write(JSON.stringify(fileContents));
     return {
       hash: h,
     };
   }
 
-  appendData(...d: T[]) {
-    if (this.#hash) throw new Error("Cannot append data to a locked file");
-    this.#data = [...d.reverse(), ...this.#data];
-  }
+  static async read<T>({fromHash, toHash, ipfsProvider}: ReadRequest): Promise<T[]> {
+    let contents: T[] = [];
+    let hashToRead: string | null = fromHash;
 
-  async readMerge(): Promise<T[]> {
-    // TODO not sure about this if (!this.#hash)
-    //   throw new Error(
-    //     "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
-    //   );
-
-    let contents: T[] = this.#data;
-    let hashToRead: string | null = this.#prev;
-
-    while (hashToRead) {
-      const fc = await this.#readFile(hashToRead);
+    while (hashToRead && hashToRead !== toHash) {
+      const s = await ipfsProvider.read(hashToRead);
+      const fc = JSON.parse(s) as FileContents<T[]>;
       hashToRead = fc.prev;
       contents = contents.concat(fc.data);
     }
@@ -81,6 +63,7 @@ export class AppendOnlyDFile<T> {
 }
 
 // A dictionary, latest version is full and up to date.
+// TODO - remove prev
 type MutableFileContents<T> = FileContents<Record<string, T>>;
 
 export class MutableDFile<T> {
@@ -112,7 +95,7 @@ export class MutableDFile<T> {
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
   async write(): Promise<WriteResponse> {
-    if (this.#hash) throw new Error("Cannot write an already locked file");
+    // if (this.#hash) throw new Error("Cannot write an already locked file");
     const fileContents: MutableFileContents<T> = {
       data: this.#data,
       prev: this.#prev,
@@ -125,8 +108,8 @@ export class MutableDFile<T> {
   }
 
   mergeData(updatedData: Record<string, T>) {
-    if (this.#hash) throw new Error("Cannot update a locked file");
-    this.#data = {...this.#data, ...updatedData};
+    // if (this.#hash) throw new Error("Cannot update a locked file");
+    this.#data = { ...this.#data, ...updatedData };
   }
 
   readLatest(): Record<string, T> {

@@ -33,12 +33,14 @@ describe("AppendOnlyDFile", () => {
     previousHash: IPFSHash | null,
     ipfsProvider: IPFSProvider
   ) {
-    const df = new AppendOnlyDFile<VoteData>(previousHash, ipfsProvider);
-    df.appendData(...voteData);
-    const { hash } = await df.write();
+    const { hash } = await AppendOnlyDFile.write({
+      data: voteData,
+      ipfsProvider: ipfsProvider,
+      lastKnownHash: previousHash,
+    });
 
     return {
-      storedDf: await AppendOnlyDFile.from<VoteData>(hash, ipfsProvider),
+      storedData: await AppendOnlyDFile.read({ fromHash: hash, ipfsProvider }),
       hash,
     };
   }
@@ -46,59 +48,75 @@ describe("AppendOnlyDFile", () => {
   it("Reads and merges from storage", async () => {
     const ipfsProv = new DummyIPFSProvider();
 
-    const { storedDf: df1, hash: h1 } = await writeAndReadFromStorage(
+    const { storedData: df1, hash: h1 } = await writeAndReadFromStorage(
       allVotes.slice(0, 2),
       null,
       ipfsProv
     );
-    await expect(df1.readMerge()).resolves.toEqual(
-      allVotes.slice(0, 2).reverse()
-    );
 
-    const { storedDf: df2, hash: h2 } = await writeAndReadFromStorage(
+    expect(df1).toEqual(allVotes.slice(0, 2).reverse());
+
+    const { storedData: df2, hash: h2 } = await writeAndReadFromStorage(
       allVotes.slice(2, 3),
       h1,
       ipfsProv
     );
-    await expect(df2.readMerge()).resolves.toEqual(
-      allVotes.slice(0, 3).reverse()
-    );
 
-    const { storedDf: df3 } = await writeAndReadFromStorage(
+    expect(df2).toEqual(allVotes.slice(0, 3).reverse());
+
+    const { storedData: df3 } = await writeAndReadFromStorage(
       allVotes.slice(3),
       h2,
       ipfsProv
     );
-    await expect(df3.readMerge()).resolves.toEqual(allVotes.slice().reverse());
+    expect(df3).toEqual(allVotes.slice().reverse());
   });
 
-  it("Written file should throw when appended", async () => {
-    const hashProv = new DummyIPFSProvider();
-    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0, 2));
-    await df.write();
-    expect(() => {
-      df.appendData(allVotes[2]);
-    }).toThrowError("Cannot append data to a locked file");
-  });
+  it("Reads partial data", async () => {
+    const ipfsProv = new DummyIPFSProvider();
 
-  it("Unlocked file should throw when trying to read merge", async () => {
-    const hashProv = new DummyIPFSProvider();
-    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0, 2));
-    await expect(df.readMerge()).rejects.toThrowError(
-      "Cannot read unlocked files. Write this file first or instantiate using DFile.from"
+    const { storedData: df1, hash: h1 } = await writeAndReadFromStorage(
+      allVotes.slice(0, 2),
+      null,
+      ipfsProv
     );
-  });
 
-  it("Unlocked file should throw when trying to write twice", async () => {
-    const hashProv = new DummyIPFSProvider();
-    const df = new AppendOnlyDFile<VoteData>(null, hashProv);
-    df.appendData(...allVotes.slice(0, 2));
-    await df.write();
-    await expect(df.write()).rejects.toThrowError(
-      "Cannot write an already locked file"
+    expect(df1).toEqual(allVotes.slice(0, 2).reverse());
+
+    const { storedData: df2, hash: h2 } = await writeAndReadFromStorage(
+      allVotes.slice(2, 3),
+      h1,
+      ipfsProv
     );
+
+    expect(df2).toEqual(allVotes.slice(0, 3).reverse());
+
+    const { hash: h3 } = await writeAndReadFromStorage(
+      allVotes.slice(3),
+      h2,
+      ipfsProv
+    );
+
+    const partialData = await AppendOnlyDFile.read({
+      fromHash: h3,
+      toHash: h2,
+      ipfsProvider: ipfsProv,
+    });
+    expect(partialData).toEqual(allVotes.slice(3).reverse());
+
+    const partialData2 = await AppendOnlyDFile.read({
+      fromHash: h3,
+      toHash: h1,
+      ipfsProvider: ipfsProv,
+    });
+    expect(partialData2).toEqual(allVotes.slice(2).reverse());
+
+    const partialData3 = await AppendOnlyDFile.read({
+      fromHash: h2,
+      toHash: h1,
+      ipfsProvider: ipfsProv,
+    });
+    expect(partialData3).toEqual(allVotes.slice(2, 3).reverse());
   });
 });
 

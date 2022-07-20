@@ -1,5 +1,5 @@
 import { RootWriter, BChainProvider, BChainAddress } from "./root-writer";
-import { IPFSProvider, AppendOnlyDFile } from './dfile';
+import { IPFSProvider, IPFSHash } from "./dfile";
 
 type Proposal = { name: string; expiry: number };
 type Project = { name: string };
@@ -8,11 +8,15 @@ type Vote = { vote: VoteAnswer; sig: string };
 
 const APP_PFX = "voting_app";
 
+const topicLastReadHashes: Record<string, IPFSHash> = {};
+
 export class VotingApp {
   _rootWriter: RootWriter;
   #ipfsProvider: IPFSProvider;
 
-  appData: Record<string, any> = {}
+  appData: Record<string, any> = { projects: {} };
+  #bchainProvider: BChainProvider;
+  #rootContract: string;
 
   constructor(
     ipfsProvider: IPFSProvider,
@@ -20,56 +24,75 @@ export class VotingApp {
     rootContract: BChainAddress
   ) {
     this.#ipfsProvider = ipfsProvider;
-    this._rootWriter = new RootWriter(
+    this.#bchainProvider = bchainProvider;
+    this.#rootContract = rootContract;
+  }
+
+  async initialize() {
+    this._rootWriter = await RootWriter.init(
       this.#ipfsProvider,
-      bchainProvider,
-      rootContract
+      this.#bchainProvider,
+      this.#rootContract
     );
   }
 
-  async readAndIndexAllData() {
-    await this._rootWriter.loadTopics();
-    const topicsDFiles = Object.fromEntries(
-        await Promise.all(
-            Object.entries(this._rootWriter.getTopicsByPrefix(APP_PFX)).map(([k,v]) => v.readMerge().then(mergedData => [k, mergedData])
-        )
-    ));
+  async readData() {
+    // TODO move caching into rootwriter
+    const readTopic = async (t: string) => {
+      const { data, hash } = await this._rootWriter.getTopicContents(
+        t,
+        topicLastReadHashes[t]
+      );
+      topicLastReadHashes[t] = hash;
+      return data;
+    };
 
-    this.appData = {projects: {}};
+    const projects = await readTopic(this.#toTopic("projects"));
 
-    const projects = topicsDFiles[this.#toTopic("projects")];
+    // TODO promise.all
+    for (const p of projects) {
+      this.appData.projects[p.name] = {};
+    }
 
-    if (!projects) return
+    for (const p of Object.keys(this.appData.projects)) {
+      const proposals = (await readTopic(this.#toTopic(p, "proposals"))) ?? [];
 
-    projects.forEach((p:any) => {
-        this.appData.projects[p.name] = {}
-        const proposals = topicsDFiles[this.#toTopic(p.name , "proposals")] ?? [];
-        proposals.forEach(proposal => {
-            this.appData.projects[p.name][proposal.name] = proposal;
-            proposal.votes = topicsDFiles[this.#toTopic(p.name , proposal.name)] ?? [];
-        })
-    })
+      for (const proposal of proposals) {
+        this.appData.projects[p][proposal.name] = proposal;
+      }
 
-    console.log(Object.keys(topicsDFiles))
-    console.log(JSON.stringify(this.appData, null, 3))
-    
+      for (const proposal of Object.values(this.appData.projects[p])) {
+        // @ts-ignore
+        proposal.votes = [
+          // @ts-ignore
+          ...((await readTopic(this.#toTopic(p, proposal.name))) ?? []),
+          // @ts-ignore
+          ...(proposal.votes ?? []),
+        ];
+      }
+    }
+
+    console.log(JSON.stringify(this.appData, null, 3));
   }
 
   #toTopic(...s: string[]) {
-    return s.reduce((prev, curr) => prev + '_' + curr.toLowerCase().replace(/\s/g, '_'), APP_PFX);
+    return s.reduce(
+      (prev, curr) => prev + "_" + curr.toLowerCase().replace(/\s/g, "_"),
+      APP_PFX
+    );
   }
 
   addProject(p: Project) {
     // TODO someone should validate at this point -> and how does mempool etc avoid conflicts from different writers?
-    this._rootWriter.updateTopic(this.#toTopic("projects"), p);
+    this._rootWriter.appendData(this.#toTopic("projects"), p);
   }
-  
+
   submitProposal(projectName: string, p: Proposal) {
     // TODO someone should validate at this point -> and how does mempool etc avoid conflicts from different writers?
-    this._rootWriter.updateTopic(this.#toTopic(projectName , "proposals"), p);
+    this._rootWriter.appendData(this.#toTopic(projectName, "proposals"), p);
   }
 
   submitVote(projectName: string, proposalName: string, v: Vote) {
-    this._rootWriter.updateTopic(this.#toTopic(projectName, proposalName), v);
+    this._rootWriter.appendData(this.#toTopic(projectName, proposalName), v);
   }
 }
