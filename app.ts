@@ -34,6 +34,13 @@ export class VotingApp {
       this.#bchainProvider,
       this.#rootContract
     );
+
+    setInterval(async () => {
+      await this._rootWriter.onEpoch();
+    }, 10);
+    setInterval(async () => {
+      await this._rootWriter.debugDump();
+    }, 4000);
   }
 
   async readData() {
@@ -43,7 +50,9 @@ export class VotingApp {
         t,
         topicLastReadHashes[t]
       );
-      topicLastReadHashes[t] = hash;
+      // TODO -> cache causes problems with arrays 
+      // because votes from mempool are added twice. TBD
+      // topicLastReadHashes[t] = hash;
       return data;
     };
 
@@ -67,12 +76,13 @@ export class VotingApp {
           // @ts-ignore
           ...((await readTopic(this.#toTopic(p, proposal.name))) ?? []),
           // @ts-ignore
-          ...(proposal.votes ?? []),
+          // ...(proposal.votes ?? []),
         ];
       }
     }
 
-    console.log(JSON.stringify(this.appData, null, 3));
+    // console.log(JSON.stringify(this.appData, null, 3));
+    return this.appData;
   }
 
   #toTopic(...s: string[]) {
@@ -82,9 +92,9 @@ export class VotingApp {
     );
   }
 
-  addProject(p: Project) {
+  async addProject(p: Project) {
     // TODO someone should validate at this point -> and how does mempool etc avoid conflicts from different writers?
-    this._rootWriter.appendData(this.#toTopic("projects"), p);
+    await this._rootWriter.appendData(this.#toTopic("projects"), p);
   }
 
   submitProposal(projectName: string, p: Proposal) {

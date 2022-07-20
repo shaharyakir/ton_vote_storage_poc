@@ -13,7 +13,7 @@ type MemPoolContents = Record<string, any[]>;
 
 export interface MemPool {
   appendData(topic: string, data: any): Promise<void>;
-  dump(): Promise<MemPoolContents>;
+  dump(): Promise<{ contents: MemPoolContents; onDone: () => void }>;
   getContents(): Promise<MemPoolContents>;
 }
 
@@ -32,17 +32,31 @@ class InMemoryMemPool implements MemPool {
   #data: any[] = [];
 
   async appendData(topic: string, data: any) {
-    this.#data.push([new Date().getTime(), topic, data]);
+    if (this.#data.find((d) => JSON.stringify(d) === JSON.stringify(data)))
+      throw "KOKO!!";
+    this.#data.push([Date.now(), topic, data]);
   }
 
-  async dump(): Promise<MemPoolContents> {
+  async dump(): Promise<{ contents: MemPoolContents; onDone: () => void }> {
     const dataByTopic = await this.getContents();
 
     // TODO this is a dangerous side effect, we should consider carefully what triggers clearing the mempool
     // especially considering data keeps flowing in (distributed/async etc)
-    this.#data = [];
+    // this.#data = [];
 
-    return dataByTopic;
+    const maxTs = this.#data.reduce(
+      (prev, curr) => Math.max(prev, curr[0]),
+      -1
+    );
+
+    const currLength = this.#data.length;
+
+    return {
+      contents: dataByTopic,
+      onDone: () => {
+        this.#data = this.#data.slice(currLength);
+      },
+    };
   }
 }
 
@@ -116,8 +130,16 @@ export class RootWriter {
 
   // TODO election etc
   // TODO flow: 1. initialize, 2. fetch data (i'm not the leader), 3. close data (i'm the leader)
+  isInEpoch = false;
+
   async onEpoch() {
-    const mempoolContents = await this.#mempool.dump();
+    if (!this.isInEpoch) {
+      this.isInEpoch = true;
+    } else {
+      return;
+    }
+    const { contents: mempoolContents, onDone: onMempoolDone } =
+      await this.#mempool.dump();
     if (Object.keys(mempoolContents).length > 0) {
       const latestTopics = this.#topicsRootDFile.readLatest();
 
@@ -138,6 +160,19 @@ export class RootWriter {
       this.#bchainProvider.update(this.#rootContract, hash);
       this._hash = hash;
       this.#topicsDFiles = this.#topicsRootDFile.readLatest();
+      onMempoolDone();
     }
+    this.isInEpoch = false;
+  }
+
+  async debugDump() {
+    console.log("================================");
+    for (const [topic, hash] of Object.entries(
+      this.#topicsRootDFile.readLatest()
+    )) {
+      const d = await this.getTopicContents(topic);
+      console.log(`...${hash.slice(32)}`, topic, JSON.stringify(d.data));
+    }
+    console.log("================================\n\n");
   }
 }
