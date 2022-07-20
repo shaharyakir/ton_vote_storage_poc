@@ -37,15 +37,13 @@ export class VotingApp {
   }
 
   async readData() {
+    // TODO move caching into rootwriter
     const readTopic = async (t: string) => {
       const { data, hash } = await this._rootWriter.getTopicContents(
         t,
         topicLastReadHashes[t]
       );
       topicLastReadHashes[t] = hash;
-      if (t === "voting_app_aave_my_proposal_#2") {
-        console.log("SHAHAR123123123213", data);
-      }
       return data;
     };
 

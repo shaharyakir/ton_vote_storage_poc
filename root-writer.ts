@@ -122,13 +122,14 @@ export class RootWriter {
       const latestTopics = this.#topicsRootDFile.readLatest();
 
       const updatedHashes = await Promise.all(
-        Object.entries(mempoolContents).map(([k, v]) => {
+        Object.entries(mempoolContents).map(async ([k, v]) => {
           // TODO presumably only if changed, though unchanged dfiles should result in the same_hash :)
-          return AppendOnlyDFile.write({
+          const { hash } = await AppendOnlyDFile.write({
             lastKnownHash: latestTopics[k],
             ipfsProvider: this.#ipfsProvider,
             data: v,
-          }).then(({ hash }) => [k, hash]);
+          });
+          return [k, hash];
         })
       );
 
