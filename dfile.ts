@@ -47,7 +47,11 @@ export class AppendOnlyDFile {
     };
   }
 
-  static async read<T>({fromHash, toHash, ipfsProvider}: ReadRequest): Promise<T[]> {
+  static async read<T>({
+    fromHash,
+    toHash,
+    ipfsProvider,
+  }: ReadRequest): Promise<T[]> {
     let contents: T[] = [];
     let hashToRead: string | null = fromHash;
 
@@ -63,61 +67,47 @@ export class AppendOnlyDFile {
 }
 
 // A dictionary, latest version is full and up to date.
-// TODO - remove prev
+// TODO - remove prev?
 type MutableFileContents<T> = FileContents<Record<string, T>>;
 
 export class MutableDFile<T> {
-  #prev: IPFSHash | null;
-  #data: Record<string, T> = {};
   #ipfsProvider: IPFSProvider;
-  #hash: IPFSHash | null;
+  #contents: MutableFileContents<T>;
+  #currentHash: IPFSHash;
 
-  constructor(prev: IPFSHash | null, h: IPFSProvider) {
+  constructor(
+    currentHash: IPFSHash,
+    contents: MutableFileContents<T> | null,
+    h: IPFSProvider
+  ) {
     this.#ipfsProvider = h;
-    this.#prev = prev;
+    this.#contents = contents;
+    this.#currentHash = currentHash;
   }
 
   static async from<T>(
     hash: IPFSHash,
-    h: IPFSProvider
+    ipfsProvider: IPFSProvider
   ): Promise<MutableDFile<T>> {
-    const newDFile = new MutableDFile<T>(null, h);
-    const fc = await newDFile.#readFile(hash);
-    newDFile.#data = fc.data;
-    newDFile.#prev = hash;
-    return newDFile;
-  }
-
-  async #readFile(hash: IPFSHash): Promise<MutableFileContents<T>> {
-    const s = await this.#ipfsProvider.read(hash);
-    return JSON.parse(s) as MutableFileContents<T>;
+    const rawData = await ipfsProvider.read(hash);
+    const fc = JSON.parse(rawData) as MutableFileContents<T>;
+    return new MutableDFile<T>(hash, fc, ipfsProvider);
   }
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
-  async write(): Promise<WriteResponse> {
-    // if (this.#hash) throw new Error("Cannot write an already locked file");
+  async write(dataToMerge: Record<string, T>): Promise<WriteResponse> {
     const fileContents: MutableFileContents<T> = {
-      data: this.#data,
-      prev: this.#prev,
+      data: { ...this.#contents.data, ...dataToMerge },
+      prev: this.#currentHash,
     };
     const h = await this.#ipfsProvider.write(JSON.stringify(fileContents));
-    this.#hash = h;
+    this.#currentHash = h;
     return {
       hash: h,
     };
   }
 
-  mergeData(updatedData: Record<string, T>) {
-    // if (this.#hash) throw new Error("Cannot update a locked file");
-    this.#data = { ...this.#data, ...updatedData };
-  }
-
   readLatest(): Record<string, T> {
-    // TODO not sure about this in mutable => if (!this.#hash)
-    //   throw new Error(
-    //     "Cannot read unlocked files. Write this file first or instantiate using MutableDFile.from"
-    //   );
-
-    return this.#data;
+    return this.#contents.data;
   }
 }

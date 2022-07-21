@@ -132,10 +132,9 @@ function Votes() {
       <h2>Votes ({votes.length})</h2>
       {votes.map((vote) => (
         <div key={vote.sig}>
-          {vote.sig} {`${vote.vote}`}
+          {vote.sig} {`${vote.vote ? "✅" : "🔻"}`}
         </div>
       ))}
-      {/* <h3> Add proposal </h3> */}
     </div>
   );
 }
