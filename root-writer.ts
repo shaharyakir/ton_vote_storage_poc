@@ -16,9 +16,14 @@ export interface MemPool {
   appendData(topic: string, data: any): Promise<void>;
   dump(): Promise<{ contents: MemPoolContents; onDone: () => Promise<void> }>;
   getContents(): Promise<MemPoolContents>;
+  length(): Promise<number>;
 }
 
 class InMemoryMemPool implements MemPool {
+  async length(): Promise<number> {
+    return this.#data.length;
+  }
+
   async getContents(): Promise<MemPoolContents> {
     const dataByTopic = {};
 
@@ -151,7 +156,6 @@ export class RootWriter {
   async onEpoch() {
     if (this.isInEpoch) return;
     this.isInEpoch = true;
-
     const { contents: mempoolContents, onDone: onMempoolDone } =
       await this.#mempool.dump();
 
@@ -184,13 +188,10 @@ export class RootWriter {
   }
 
   async debugDump() {
-    const contents = await this.#mempool.getContents();
+    const mempoolLength = await this.#mempool.length();
     const rootHash = await this.#bchainProvider.readData(this.#rootContract);
     return {
-      mempoolLength: Object.values(contents).reduce(
-        (prev, curr) => prev + curr.length,
-        0
-      ),
+      mempoolLength,
       rootHash,
       dfiles: this.#topicsDFiles,
     };

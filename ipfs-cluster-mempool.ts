@@ -55,6 +55,13 @@ export class IPFSClusterMempool implements MemPool {
     onDone: () => Promise<void>;
   }> {
     const rawContents = await this._getContents();
+    const dataByTopic = {};
+
+    for (const { data } of rawContents) {
+      const [_, k, v] = data;
+      if (!dataByTopic[k]) dataByTopic[k] = [];
+      dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
+    }
 
     await Promise.all(
       rawContents.map(({ cid }) =>
@@ -65,21 +72,13 @@ export class IPFSClusterMempool implements MemPool {
       )
     );
 
-    const dataByTopic = {};
-
-    for (const { data } of rawContents) {
-      const [_, k, v] = data;
-      if (!dataByTopic[k]) dataByTopic[k] = [];
-      dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
-    }
-
     return {
       contents: dataByTopic,
       onDone: async () => {
         const cids = await this._getCidsByMetadata({ mempoolToRemove: "true" });
         await Promise.all(
           cids.map((cid) => {
-            this._pinCidWithMetadata(cid, { deadPool: "true" }); // TODO this is ok but also we need TTL
+            this._pinCidWithMetadata(cid, { deadpool: "true" }); // TODO this is ok but also we need TTL
           })
         );
       },
@@ -91,11 +90,11 @@ export class IPFSClusterMempool implements MemPool {
   ): Promise<IPFSHash[]> {
     const resp = await axios.get(this.#opts.pinApi + "/pins", {
       params: {
-        limit: 1000, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
+        // limit: 100, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
         meta: JSON.stringify(metadata),
       }, // '{"mempool": "true"}'
     });
-    return resp.data.results.map((r) => r.pin.cid);
+    return resp.data.results.map((r: any) => r.pin.cid);
   }
 
   private async _getContents() {
@@ -110,8 +109,29 @@ export class IPFSClusterMempool implements MemPool {
     );
   }
 
+  async length(): Promise<number> {
+    // const cids = await this._getCidsByMetadata({ mempool: "true" });
+    return 0; //cids.length;
+  }
+
   async getContents(): Promise<{ [x: string]: any[] }> {
+    console.log("getting content");
     return {};
+    // TODO interesting with caching mempool
+
+    const rawContents = await this._getContents();
+
+    const dataByTopic = {};
+
+    for (const { data } of rawContents) {
+      const [_, k, v] = data;
+      if (!dataByTopic[k]) dataByTopic[k] = [];
+      dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
+    }
+
+    console.log("got content");
+
+    return dataByTopic; // TODO reuse
   }
 }
 
@@ -137,20 +157,20 @@ export class IPFSClusterMempool implements MemPool {
 //   return resp.data;
 // }
 
-(async () => {
-  const icp = new IPFSClusterMempool({
-    pinApi: "http://localhost:9097",
-    rpcApi: "http://localhost:9094",
-    gw: "http://127.0.0.1:8080/ipfs",
-  });
+// (async () => {
+//   const icp = new IPFSClusterMempool({
+//     pinApi: "http://localhost:9097",
+//     rpcApi: "http://localhost:9094",
+//     gw: "http://127.0.0.1:8080/ipfs",
+//   });
 
-  // await icp.temp()
-  // return;
+//   await icp.temp()
+//   return;
 
-  const h = await icp.appendData("t1", "moko");
-  await icp.appendData("t1", "zoko");
-  await icp.appendData("t2", "boko");
-  console.log(h);
-  const data = await icp.dump();
-  console.log(data);
-})();
+//   const h = await icp.appendData("t1", "moko");
+//   await icp.appendData("t1", "zoko");
+//   await icp.appendData("t2", "boko");
+//   console.log(h);
+//   const data = await icp.dump();
+//   console.log(data);
+// })();
