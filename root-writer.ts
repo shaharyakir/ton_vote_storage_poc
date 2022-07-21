@@ -23,7 +23,7 @@ class InMemoryMemPool implements MemPool {
 
     this.#data.forEach(([_, k, v]) => {
       if (!dataByTopic[k]) dataByTopic[k] = [];
-      dataByTopic[k].push(v);
+      dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
     });
 
     return dataByTopic;
@@ -156,7 +156,7 @@ export class RootWriter {
       const { hash } = await this.#topicsRootDFile.write(
         Object.fromEntries(updatedHashes)
       );
-      console.log("Wrote" + hash)
+      console.log("Wrote" + hash);
       this.#bchainProvider.update(this.#rootContract, hash);
       this._hash = hash;
       this.#topicsDFiles = this.#topicsRootDFile.readLatest();
@@ -166,13 +166,19 @@ export class RootWriter {
   }
 
   async debugDump() {
-    // console.log("================================");
-    // for (const [topic, hash] of Object.entries(
-    //   this.#topicsRootDFile.readLatest()
-    // )) {
-    //   const d = await this.getTopicContents(topic);
-    //   console.log(`...${hash.slice(32)}`, topic, JSON.stringify(d.data));
-    // }
-    // console.log("================================\n\n");
+    const contents = await this.#mempool.getContents();
+    const rootHash = await this.#bchainProvider.readData(this.#rootContract);
+    return {
+      mempoolLength: Object.values(contents).reduce((prev,curr) => prev + curr.length, 0),
+      rootHash
+    };
+    console.log("================================");
+    for (const [topic, hash] of Object.entries(
+      this.#topicsRootDFile.readLatest()
+    )) {
+      const d = await this.getTopicContents(topic);
+      console.log(`...${hash.slice(32)}`, topic, JSON.stringify(d.data));
+    }
+    console.log("================================\n\n");
   }
 }

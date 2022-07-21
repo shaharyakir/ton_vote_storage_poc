@@ -21,8 +21,33 @@ import {
   useSetRecoilState,
 } from "recoil";
 
+// class IndexedDBIPFSProvider implements IPFSProvider {
+//   // const myPromise = new Promise((resolve))
+
+//   constructor() {
+//     const openReq = window.indexedDB.open("MyTestDatabase4", 2);
+//     openReq.onupgradeneeded = () => {
+//       this.db = openReq.result;
+//       this.db.createObjectStore("ipfszzz", { keyPath: "id" });
+//     };
+//   }
+
+//   async write(data: string): Promise<IPFSHash> {
+//     const h = (await of(data)) as IPFSHash;
+//     const hashes = transaction.objectStore("ipfszzz"); // (2)
+//     hashes.add({id: h, data: data})
+//     // localStorage.setItem(h, data);
+//     return h;
+//   }
+//   read(hash: IPFSHash): Promise<string> {
+//     // if (hash === "ROOT_HASH123") return '{"data": {}, "prev": null}';
+//     // return localStorage.getItem(hash);
+
+//     return '{"data": {}, "prev": null}';
+//   }
+// }
+
 class DummyIPFSProvider implements IPFSProvider {
-  
   async write(data: string): Promise<IPFSHash> {
     const h = (await of(data)) as IPFSHash;
     localStorage.setItem(h, data);
@@ -53,6 +78,7 @@ const vapp = new VotingApp(
 function App() {
   return (
     <RecoilRoot>
+      <StorageInfo />
       <VPP />
     </RecoilRoot>
   );
@@ -269,6 +295,24 @@ function CreateProject() {
       <button onClick={addItem}>Add</button>
     </div>
   );
+}
+
+const storageInfoAtom = atom({
+  key: "storageInfo", // unique ID (with respect to other atoms/selectors)
+  default: {}, // default value (aka initial value)
+});
+
+function StorageInfo() {
+  const [storageInfo, setStorageInfo] = useRecoilState(storageInfoAtom);
+
+  useEffect(() => {
+    setInterval(async () => {
+      const sInfo = await vapp._rootWriter.debugDump();
+      setStorageInfo(sInfo);
+    }, 100);
+  }, [setStorageInfo]);
+
+  return <div>{JSON.stringify(storageInfo)}</div>;
 }
 
 export default App;
