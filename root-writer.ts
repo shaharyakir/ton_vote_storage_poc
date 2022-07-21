@@ -1,4 +1,5 @@
 import { IPFSHash, IPFSProvider, MutableDFile, AppendOnlyDFile } from "./dfile";
+import { IPFSClusterMempool } from "./ipfs-cluster-mempool";
 
 // todo str
 export type BChainAddress = string;
@@ -13,7 +14,7 @@ type MemPoolContents = Record<string, any[]>;
 
 export interface MemPool {
   appendData(topic: string, data: any): Promise<void>;
-  dump(): Promise<{ contents: MemPoolContents; onDone: () => void }>;
+  dump(): Promise<{ contents: MemPoolContents; onDone: () => Promise<void> }>;
   getContents(): Promise<MemPoolContents>;
 }
 
@@ -35,7 +36,10 @@ class InMemoryMemPool implements MemPool {
     this.#data.push([Date.now(), topic, data]);
   }
 
-  async dump(): Promise<{ contents: MemPoolContents; onDone: () => void }> {
+  async dump(): Promise<{
+    contents: MemPoolContents;
+    onDone: () => Promise<void>;
+  }> {
     const dataByTopic = await this.getContents();
 
     // TODO this is a dangerous side effect, we should consider carefully what triggers clearing the mempool
@@ -51,7 +55,7 @@ class InMemoryMemPool implements MemPool {
 
     return {
       contents: dataByTopic,
-      onDone: () => {
+      onDone: async () => {
         this.#data = this.#data.slice(currLength);
       },
     };
@@ -64,7 +68,7 @@ export class RootWriter {
   #rootContract: string;
   _hash: IPFSHash;
   #topicsRootDFile: MutableDFile<IPFSHash>;
-  #mempool: InMemoryMemPool;
+  #mempool: MemPool;
   #topicsDFiles: { [k: string]: string };
 
   constructor(
@@ -75,7 +79,11 @@ export class RootWriter {
     this.#ipfsProvider = ipfsProvider;
     this.#bchainProvider = bchainProvider;
     this.#rootContract = rootContract;
-    this.#mempool = new InMemoryMemPool();
+    this.#mempool = new IPFSClusterMempool({
+      pinApi: "http://localhost:9097",
+      rpcApi: "http://localhost:9094",
+      gw: "http://127.0.0.1:8080/ipfs",
+    });
   }
 
   static async init(
@@ -184,7 +192,7 @@ export class RootWriter {
         0
       ),
       rootHash,
-      dfiles: this.#topicsDFiles
+      dfiles: this.#topicsDFiles,
     };
     console.log("================================");
     for (const [topic, hash] of Object.entries(
