@@ -90,7 +90,7 @@ export class IPFSClusterMempool implements MemPool {
   ): Promise<IPFSHash[]> {
     const resp = await axios.get(this.#opts.pinApi + "/pins", {
       params: {
-        // limit: 100, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
+        limit: 100, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
         meta: JSON.stringify(metadata),
       }, // '{"mempool": "true"}'
     });
@@ -116,7 +116,7 @@ export class IPFSClusterMempool implements MemPool {
 
   async getContents(): Promise<{ [x: string]: any[] }> {
     console.log("getting content");
-    return {};
+    // return {};
     // TODO interesting with caching mempool
 
     const rawContents = await this._getContents();

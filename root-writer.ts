@@ -5,6 +5,32 @@ import { IPFSClusterMempool } from "./ipfs-cluster-mempool";
 export type BChainAddress = string;
 type BChainData = string;
 
+const memoizeTimeout = (fn, time) => {
+  let cache = {};
+
+  return async (...args) => {
+    //Create hash.
+    const n =  "SHOKO"; // btoa(args);
+
+    //Find in cache or store new values.
+    if (!(n in cache)) {
+      console.log("Creating cache");
+      cache[n] = fn(...args).then((r) => {
+        //Erase cache.
+        setTimeout(() => {
+          if (n in cache) {
+            delete cache[n];
+          }
+        }, time);
+        return r;
+      });
+    } else {
+      console.log("Already in cache");
+    }
+    return cache[n];
+  };
+};
+
 export interface BChainProvider {
   update(arg0: string, _hash: string);
   readData(contractAddr: BChainAddress): Promise<BChainData>;
@@ -75,6 +101,7 @@ export class RootWriter {
   #topicsRootDFile: MutableDFile<IPFSHash>;
   #mempool: MemPool;
   #topicsDFiles: { [k: string]: string };
+  #memoizedMempool: (...args: any[]) => Promise<any>;
 
   constructor(
     ipfsProvider: IPFSProvider,
@@ -112,6 +139,10 @@ export class RootWriter {
       this.#ipfsProvider
     );
     this.#topicsDFiles = this.#topicsRootDFile.readLatest();
+    this.#memoizedMempool = memoizeTimeout(
+      this.#mempool.getContents.bind(this.#mempool),
+      10
+    );
   }
 
   // TODO if fromHash==toHash
@@ -123,7 +154,8 @@ export class RootWriter {
     hash: string;
   }> {
     const fromHash = this.#topicsDFiles[topic];
-    const mempoolContents = (await this.#mempool.getContents())[topic] ?? [];
+
+    const mempoolContents = (await this.#memoizedMempool())[topic] ?? [];
     const storageContents = await AppendOnlyDFile.read({
       fromHash,
       toHash,
