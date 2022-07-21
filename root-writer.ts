@@ -155,8 +155,10 @@ export class RootWriter {
         })
       );
 
-      this.#topicsRootDFile.mergeData(Object.fromEntries(updatedHashes));
-      const { hash } = await this.#topicsRootDFile.write();
+      const { hash } = await this.#topicsRootDFile.write(
+        Object.fromEntries(updatedHashes)
+      );
+      console.log("Wrote" + hash)
       this.#bchainProvider.update(this.#rootContract, hash);
       this._hash = hash;
       this.#topicsDFiles = this.#topicsRootDFile.readLatest();
@@ -166,13 +168,13 @@ export class RootWriter {
   }
 
   async debugDump() {
-    console.log("================================");
-    for (const [topic, hash] of Object.entries(
-      this.#topicsRootDFile.readLatest()
-    )) {
-      const d = await this.getTopicContents(topic);
-      console.log(`...${hash.slice(32)}`, topic, JSON.stringify(d.data));
-    }
-    console.log("================================\n\n");
+    // console.log("================================");
+    // for (const [topic, hash] of Object.entries(
+    //   this.#topicsRootDFile.readLatest()
+    // )) {
+    //   const d = await this.getTopicContents(topic);
+    //   console.log(`...${hash.slice(32)}`, topic, JSON.stringify(d.data));
+    // }
+    // console.log("================================\n\n");
   }
 }

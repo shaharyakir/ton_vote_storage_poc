@@ -96,11 +96,12 @@ export class MutableDFile<T> {
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
   async write(dataToMerge: Record<string, T>): Promise<WriteResponse> {
-    const fileContents: MutableFileContents<T> = {
+    console.log(JSON.stringify(this.#contents.data), JSON.stringify(dataToMerge))
+    this.#contents = {
       data: { ...this.#contents.data, ...dataToMerge },
       prev: this.#currentHash,
     };
-    const h = await this.#ipfsProvider.write(JSON.stringify(fileContents));
+    const h = await this.#ipfsProvider.write(JSON.stringify(this.#contents));
     this.#currentHash = h;
     return {
       hash: h,
