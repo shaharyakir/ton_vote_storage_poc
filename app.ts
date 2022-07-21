@@ -37,7 +37,7 @@ export class VotingApp {
 
     setInterval(async () => {
       await this._rootWriter.onEpoch();
-    }, 10);
+    }, 1000);
     setInterval(async () => {
       await this._rootWriter.debugDump();
     }, 4000);

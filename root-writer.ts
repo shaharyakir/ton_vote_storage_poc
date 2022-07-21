@@ -32,8 +32,6 @@ class InMemoryMemPool implements MemPool {
   #data: any[] = [];
 
   async appendData(topic: string, data: any) {
-    if (this.#data.find((d) => JSON.stringify(d) === JSON.stringify(data)))
-      throw "KOKO!!";
     this.#data.push([Date.now(), topic, data]);
   }
 

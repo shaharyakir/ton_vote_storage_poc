@@ -22,26 +22,16 @@ import {
 } from "recoil";
 
 class DummyIPFSProvider implements IPFSProvider {
-  myData = {
-    ROOT_HASH123: '{"data": {}, "prev": null}',
-  };
-
-  constructor() {
-    this.myData = localStorage.getItem("vappData")
-      ? JSON.parse(localStorage.getItem("vappData"))
-      : {
-          ROOT_HASH123: '{"data": {}, "prev": null}',
-        };
-  }
-
+  
   async write(data: string): Promise<IPFSHash> {
     const h = (await of(data)) as IPFSHash;
-    this.myData[h] = data;
-    localStorage.setItem("vappData", JSON.stringify(this.myData));
+    localStorage.setItem(h, data);
     return h;
   }
   read(hash: IPFSHash): Promise<string> {
-    return this.myData[hash];
+    if (hash === "ROOT_HASH123") return '{"data": {}, "prev": null}';
+
+    return localStorage.getItem(hash);
   }
 }
 
@@ -130,7 +120,7 @@ function Votes() {
       <Vote />
 
       <h2>Votes ({votes.length})</h2>
-      {votes.map((vote) => (
+      {votes.slice(0, 1000).map((vote) => (
         <div key={vote.sig}>
           {vote.sig} {`${vote.vote ? "✅" : "🔻"}`}
         </div>
@@ -143,18 +133,21 @@ function Vote() {
   const [_, setAppData] = useRecoilState(votingDB);
   const [appState, setAppState] = useRecoilState(appStateAtom);
 
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      // await vote(false);
-    }, 1);
-    return () => clearInterval(interval);
-  }, []);
+  // useEffect(() => {
+  //   const interval = setInterval(async () => {
+  //     await vote(false);
+  //   }, 1);
+  //   return () => clearInterval(interval);
+  // }, []);
 
   const vote = async (isIt: boolean) => {
-    await vapp.submitVote(appState.selectedProject, appState.selectedProposal, {
-      sig: `${Math.random() * 1000}${Date.now()}`,
-      vote: isIt,
+    new Array(1000).fill(1).map((_) => {
+      vapp.submitVote(appState.selectedProject, appState.selectedProposal, {
+        sig: `${Math.random() * 1000}${Date.now()}`,
+        vote: isIt,
+      });
     });
+
     await refreshData(setAppData);
   };
 
