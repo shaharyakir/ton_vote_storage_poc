@@ -57,7 +57,9 @@ export class AppendOnlyDFile {
 
     while (hashToRead && hashToRead !== toHash) {
       const s = await ipfsProvider.read(hashToRead);
-      const fc = JSON.parse(s) as FileContents<T[]>;
+      // const fc = JSON.parse(s) as FileContents<T[]>;
+      // @ts-ignore
+      const fc = s as FileContents<T[]>;
       hashToRead = fc.prev;
       contents = contents.concat(fc.data);
     }
@@ -90,13 +92,15 @@ export class MutableDFile<T> {
     ipfsProvider: IPFSProvider
   ): Promise<MutableDFile<T>> {
     const rawData = await ipfsProvider.read(hash);
-    const fc = JSON.parse(rawData) as MutableFileContents<T>;
+    // const fc = JSON.parse(rawData) as MutableFileContents<T>;
+    // @ts-ignore
+    const fc = rawData as MutableFileContents<T>;
     return new MutableDFile<T>(hash, fc, ipfsProvider);
   }
 
   // Should generate IPFS hash for outstanding data + prev and return the new hash + content?
   async write(dataToMerge: Record<string, T>): Promise<WriteResponse> {
-    console.log(JSON.stringify(this.#contents.data), JSON.stringify(dataToMerge))
+    // console.log(JSON.stringify(this.#contents.data), JSON.stringify(dataToMerge))
     this.#contents = {
       data: { ...this.#contents.data, ...dataToMerge },
       prev: this.#currentHash,

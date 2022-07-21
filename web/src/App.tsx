@@ -9,6 +9,7 @@ import {
   IPFSHash,
   BChainProvider,
   VotingApp,
+  IPFSClusterProvider,
 } from "l3-storage-tests";
 import { of } from "ipfs-only-hash";
 
@@ -70,7 +71,12 @@ class DummyBChainProvider implements BChainProvider {
 }
 
 const vapp = new VotingApp(
-  new DummyIPFSProvider(),
+  // new DummyIPFSProvider(),
+  new IPFSClusterProvider({
+    pinApi: "http://localhost:9097",
+    rpcApi: "http://localhost:9094",
+    gw: "http://127.0.0.1:8080/ipfs",
+  }),
   new DummyBChainProvider(),
   "DUMMY"
 );
@@ -139,8 +145,10 @@ function VPP() {
 function Votes() {
   const data = useRecoilValue(votingDB);
   const [appState, setAppState] = useRecoilState(appStateAtom);
+  
   const votes =
-    data?.projects[appState.selectedProject][appState.selectedProposal].votes;
+    data?.projects?.[appState.selectedProject]?.[appState.selectedProposal]
+      ?.votes ?? [];
   return (
     <div style={{ flexBasis: "20%" }}>
       <Vote />
@@ -156,25 +164,32 @@ function Votes() {
 }
 
 function Vote() {
+  const [okToSet, setOkToSet] = useState(true);
   const [_, setAppData] = useRecoilState(votingDB);
   const [appState, setAppState] = useRecoilState(appStateAtom);
 
   // useEffect(() => {
   //   const interval = setInterval(async () => {
   //     await vote(false);
-  //   }, 1);
+  //   }, 200);
   //   return () => clearInterval(interval);
   // }, []);
 
   const vote = async (isIt: boolean) => {
-    new Array(1000).fill(1).map((_) => {
+    if (!okToSet) return;
+    setOkToSet(false);
+
+    new Array(1).fill(1).map((_) => {
       vapp.submitVote(appState.selectedProject, appState.selectedProposal, {
         sig: `${Math.random() * 1000}${Date.now()}`,
         vote: isIt,
       });
     });
 
+    // await vapp.readData();
     await refreshData(setAppData);
+
+    setOkToSet(true);
   };
 
   return (

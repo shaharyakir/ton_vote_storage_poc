@@ -45,22 +45,24 @@ export class VotingApp {
 
   async readData() {
     // TODO move caching into rootwriter
-    const readTopic = async (t: string) => {
+    const readTopic = async (t: string, skipCache: boolean) => {
       const { data, hash } = await this._rootWriter.getTopicContents(
         t,
-        topicLastReadHashes[t]
+        skipCache ? undefined : topicLastReadHashes[t]
       );
-      // TODO -> cache causes problems with arrays 
+      // TODO -> cache causes problems with arrays
       // because votes from mempool are added twice. TBD
-      // topicLastReadHashes[t] = hash;
+      topicLastReadHashes[t] = hash;
       return data;
     };
 
     const projects = await readTopic(this.#toTopic("projects"));
 
+    // const newData = {projects: {}};
+
     // TODO promise.all
     for (const p of projects) {
-      this.appData.projects[p.name] = {};
+      this.appData.projects[p.name] = this.appData.projects[p.name] ?? {};
     }
 
     for (const p of Object.keys(this.appData.projects)) {
@@ -73,8 +75,8 @@ export class VotingApp {
       for (const proposal of Object.values(this.appData.projects[p])) {
         // @ts-ignore
         proposal.votes = [
-          // @ts-ignore
-          ...((await readTopic(this.#toTopic(p, proposal.name))) ?? []),
+          // @ts-ignore TODO - remove the skip cache
+          ...((await readTopic(this.#toTopic(p, proposal.name), true)) ?? []),
           // @ts-ignore
           // ...(proposal.votes ?? []),
         ];
@@ -82,6 +84,7 @@ export class VotingApp {
     }
 
     // console.log(JSON.stringify(this.appData, null, 3));
+    // this.appData = newData;
     return this.appData;
   }
 

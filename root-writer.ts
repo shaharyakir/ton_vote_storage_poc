@@ -110,12 +110,22 @@ export class RootWriter {
     hash: string;
   }> {
     const fromHash = this.#topicsDFiles[topic];
+    const mempoolContents = (await this.#mempool.getContents())[topic] ?? [];
     const storageContents = await AppendOnlyDFile.read({
       fromHash,
       toHash,
       ipfsProvider: this.#ipfsProvider,
     });
-    const mempoolContents = (await this.#mempool.getContents())[topic] ?? [];
+    console.log(
+      "topic",
+      topic,
+      "fromhash",
+      fromHash,
+      "mempool",
+      mempoolContents.length,
+      "storage",
+      storageContents.length
+    );
     return {
       data: [...storageContents, ...mempoolContents],
       hash: fromHash,
@@ -131,13 +141,12 @@ export class RootWriter {
   isInEpoch = false;
 
   async onEpoch() {
-    if (!this.isInEpoch) {
-      this.isInEpoch = true;
-    } else {
-      return;
-    }
+    if (this.isInEpoch) return;
+    this.isInEpoch = true;
+
     const { contents: mempoolContents, onDone: onMempoolDone } =
       await this.#mempool.dump();
+
     if (Object.keys(mempoolContents).length > 0) {
       const latestTopics = this.#topicsRootDFile.readLatest();
 
@@ -160,6 +169,7 @@ export class RootWriter {
       this.#bchainProvider.update(this.#rootContract, hash);
       this._hash = hash;
       this.#topicsDFiles = this.#topicsRootDFile.readLatest();
+      console.log(this.#topicsDFiles, "before cleaning mempool");
       onMempoolDone();
     }
     this.isInEpoch = false;
@@ -169,8 +179,12 @@ export class RootWriter {
     const contents = await this.#mempool.getContents();
     const rootHash = await this.#bchainProvider.readData(this.#rootContract);
     return {
-      mempoolLength: Object.values(contents).reduce((prev,curr) => prev + curr.length, 0),
-      rootHash
+      mempoolLength: Object.values(contents).reduce(
+        (prev, curr) => prev + curr.length,
+        0
+      ),
+      rootHash,
+      dfiles: this.#topicsDFiles
     };
     console.log("================================");
     for (const [topic, hash] of Object.entries(
