@@ -87,6 +87,9 @@ export class IPFSClusterMempool implements MemPool {
       dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
     }
 
+    console.time("mempoolToRemove")
+    console.timeLog("mempoolToRemove", "Start")
+
     await Promise.all(
       rawContents.map(({ cid }) =>
         this._pinCidWithMetadata(cid, {
@@ -95,6 +98,8 @@ export class IPFSClusterMempool implements MemPool {
         })
       )
     );
+
+    console.timeEnd("mempoolToRemove")
 
     console.log("t2");
 

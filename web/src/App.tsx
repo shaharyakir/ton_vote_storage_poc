@@ -208,7 +208,7 @@ function Vote() {
     // if (!okToSet) return;
     // setOkToSet(false);
 
-    new Array(50).fill(1).map((_) => {
+    new Array(10).fill(1).map((_) => {
       vapp.submitVote(appState.selectedProject, appState.selectedProposal, {
         sig: `${Math.random() * 1000}${Date.now()}`,
         vote: isIt,
