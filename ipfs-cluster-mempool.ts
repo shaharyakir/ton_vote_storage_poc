@@ -19,10 +19,12 @@ export class IPFSClusterMempool implements MemPool {
     cid: IPFSHash,
     metadata: Record<string, string>
   ) {
+    const keys = Object.fromEntries(
+      Object.entries(metadata).map(([k, v]) => [`meta-${k}`, v])
+    );
+    // console.log(cid, keys);
     return axios.post(this.#opts.rpcApi + `/pins/${cid}`, null, {
-      params: Object.fromEntries(
-        Object.entries(metadata).map(([k, v]) => [`meta-${k}`, v])
-      ),
+      params: keys,
     });
   }
 
@@ -30,17 +32,39 @@ export class IPFSClusterMempool implements MemPool {
     const fd = new FormData();
     fd.append("myFile", JSON.stringify([Date.now(), topic, data]));
     try {
+      console.log("1");
+      const keys = Object.fromEntries(
+        Object.entries({ mempool: "true" }).map(([k, v]) => [`meta-${k}`, v])
+      );
       const resp = await axios.post(this.#opts.rpcApi + "/add", fd, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
+        params: keys,
       });
-      await this._pinCidWithMetadata(resp.data.cid, { mempool: "true" });
+      console.log("2");
       return resp.data.cid;
     } catch (e) {
       console.error(e);
       throw e;
     }
+  }
+
+  async appendMultiple(params: [topic: string, data: any][]) {
+    const fd = new FormData();
+    params.forEach(([topic, data], i) => {
+      fd.append(`file${i}`, JSON.stringify([Date.now(), topic, data]));
+    });
+    const keys = Object.fromEntries(
+      Object.entries({ mempool: "true" }).map(([k, v]) => [`meta-${k}`, v])
+    );
+    const resp = await axios.post(this.#opts.rpcApi + "/add", fd, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      params: keys,
+    });
+    console.log(resp.data);
   }
 
   async temp() {
@@ -55,7 +79,7 @@ export class IPFSClusterMempool implements MemPool {
     onDone: () => Promise<void>;
   }> {
     const rawContents = await this._getContents();
-    const dataByTopic = {};
+    const dataByTopic: Record<string, any> = {};
 
     for (const { data } of rawContents) {
       const [_, k, v] = data;
@@ -72,15 +96,20 @@ export class IPFSClusterMempool implements MemPool {
       )
     );
 
+    console.log("t2");
+
     return {
       contents: dataByTopic,
       onDone: async () => {
+        console.time("Clear deadpool");
         const cids = await this._getCidsByMetadata({ mempoolToRemove: "true" });
+        console.timeLog("Clear deadpool", cids.length);
         await Promise.all(
           cids.map((cid) => {
-            this._pinCidWithMetadata(cid, { deadpool: "true" }); // TODO this is ok but also we need TTL
+            return this._pinCidWithMetadata(cid, { deadpool: "true" }); // TODO this is ok but also we need TTL
           })
         );
+        console.timeEnd("Clear deadpool");
       },
     };
   }
@@ -90,7 +119,7 @@ export class IPFSClusterMempool implements MemPool {
   ): Promise<IPFSHash[]> {
     const resp = await axios.get(this.#opts.pinApi + "/pins", {
       params: {
-        limit: 100, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
+        limit: 500, // TODO paging? also perhaps depends on the use case. onEpoch needs everything, but read perhaps doesn't
         meta: JSON.stringify(metadata),
       }, // '{"mempool": "true"}'
     });
@@ -98,7 +127,10 @@ export class IPFSClusterMempool implements MemPool {
   }
 
   private async _getContents() {
+    console.time("get contents");
     const cids = await this._getCidsByMetadata({ mempool: "true" });
+    console.timeLog("get contents", "got " + cids.length + "cids");
+    console.timeEnd("get contents");
     return Promise.all(
       cids.map((cid) =>
         axios.get(`${this.#opts.gw}/${cid}`).then(({ data }) => ({
@@ -115,23 +147,23 @@ export class IPFSClusterMempool implements MemPool {
   }
 
   async getContents(): Promise<{ [x: string]: any[] }> {
-    console.log("getting content");
-    // return {};
+    // console.log("getting content");
+    return {};
     // TODO interesting with caching mempool
 
-    const rawContents = await this._getContents();
+    // const rawContents = await this._getContents();
 
-    const dataByTopic = {};
+    // const dataByTopic = {};
 
-    for (const { data } of rawContents) {
-      const [_, k, v] = data;
-      if (!dataByTopic[k]) dataByTopic[k] = [];
-      dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
-    }
+    // for (const { data } of rawContents) {
+    //   const [_, k, v] = data;
+    //   if (!dataByTopic[k]) dataByTopic[k] = [];
+    //   dataByTopic[k].push(JSON.parse(JSON.stringify(v)));
+    // }
 
-    console.log("got content");
+    // console.log("got content");
 
-    return dataByTopic; // TODO reuse
+    // return dataByTopic; // TODO reuse
   }
 }
 

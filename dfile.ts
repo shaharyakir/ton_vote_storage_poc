@@ -55,11 +55,20 @@ export class AppendOnlyDFile {
     let contents: T[] = [];
     let hashToRead: string | null = fromHash;
 
+    // let i = 0;
+
     while (hashToRead && hashToRead !== toHash) {
+      // i += 1;
       const s = await ipfsProvider.read(hashToRead);
       // const fc = JSON.parse(s) as FileContents<T[]>;
       // @ts-ignore
       const fc = s as FileContents<T[]>;
+      // @ts-ignore
+      // const idx = fc.data.findIndex(x => x.sig === '827.61926663285681658472219854')
+      // if (i === 6 ||i === 7) {
+      //   // @ts-ignore
+      //   console.log(fc.data.map(d => parseFloat(d.sig)).sort((a,b) => a-b))
+      // }
       hashToRead = fc.prev;
       contents = contents.concat(fc.data);
     }
@@ -79,7 +88,7 @@ export class MutableDFile<T> {
 
   constructor(
     currentHash: IPFSHash,
-    contents: MutableFileContents<T> | null,
+    contents: MutableFileContents<T>,
     h: IPFSProvider
   ) {
     this.#ipfsProvider = h;

@@ -70,12 +70,14 @@ class DummyBChainProvider implements BChainProvider {
   }
 }
 
+// http://3.16.42.100/
+
 const vapp = new VotingApp(
   // new DummyIPFSProvider(),
   new IPFSClusterProvider({
-    pinApi: "http://localhost:9097",
-    rpcApi: "http://localhost:9094",
-    gw: "http://127.0.0.1:8080/ipfs",
+    pinApi: "http://3.16.42.100:9097",
+    rpcApi: "http://3.16.42.100:9094",
+    gw: "http://3.16.42.100/ipfs",
   }),
   new DummyBChainProvider(),
   "DUMMY"
@@ -109,6 +111,31 @@ const refreshData = async (setAppData: any) => {
   setAppData(JSON.parse(JSON.stringify(data)));
 };
 
+async function addData() {
+  const someArr = new Array(3).fill(1);
+  const projects = someArr.map((x) => ({ name: `Proj${Math.random()}` }));
+
+  let promises = projects.map((p) => vapp.addProject(p));
+
+  const proposals = projects
+    .map(({ name }) =>
+      someArr.map((_) => [name, { name: `Proposal${Math.random()}` }])
+    )
+    .flat();
+
+  promises = [
+    ...promises,
+    proposals.map(([proj, proposal]) => vapp.submitProposal(proj, proposal)),
+  ];
+
+  promises = [...promises, proposals.map(([proj, proposal]) => someArr.map(_ => vapp.submitVote(proj, proposal.name, {
+    sig: `${Math.random() * 1000}${Date.now()}`,
+    vote: !!Math.random(),
+  }))).flat()];
+
+  await Promise.all(promises)
+}
+
 function VPP() {
   const [votingDBData, setVotingDB] = useRecoilState(votingDB);
   const { selectedProject, selectedProposal } = useRecoilValue(appStateAtom);
@@ -133,6 +160,8 @@ function VPP() {
         >
         shoko
       </button> */}
+      <button onClick={() => refreshData(setVotingDB)}>Refresh data</button>
+      <button onClick={() => addData()}>Add data</button>
       <div style={{ display: "flex", gap: 20 }}>
         <Projects />
         {selectedProject && <Proposals />}
@@ -145,7 +174,7 @@ function VPP() {
 function Votes() {
   const data = useRecoilValue(votingDB);
   const [appState, setAppState] = useRecoilState(appStateAtom);
-  
+
   const votes =
     data?.projects?.[appState.selectedProject]?.[appState.selectedProposal]
       ?.votes ?? [];
@@ -168,18 +197,18 @@ function Vote() {
   const [_, setAppData] = useRecoilState(votingDB);
   const [appState, setAppState] = useRecoilState(appStateAtom);
 
-  // useEffect(() => {
-  //   const interval = setInterval(async () => {
-  //     await vote(false);
-  //   }, 200);
-  //   return () => clearInterval(interval);
-  // }, []);
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      // await vote(false);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   const vote = async (isIt: boolean) => {
-    if (!okToSet) return;
-    setOkToSet(false);
+    // if (!okToSet) return;
+    // setOkToSet(false);
 
-    new Array(1).fill(1).map((_) => {
+    new Array(50).fill(1).map((_) => {
       vapp.submitVote(appState.selectedProject, appState.selectedProposal, {
         sig: `${Math.random() * 1000}${Date.now()}`,
         vote: isIt,
@@ -187,9 +216,9 @@ function Vote() {
     });
 
     // await vapp.readData();
-    await refreshData(setAppData);
+    // await refreshData(setAppData);
 
-    setOkToSet(true);
+    // setOkToSet(true);
   };
 
   return (

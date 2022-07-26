@@ -5,16 +5,18 @@ import { IPFSClusterMempool } from "./ipfs-cluster-mempool";
 export type BChainAddress = string;
 type BChainData = string;
 
-const memoizeTimeout = (fn, time) => {
-  let cache = {};
+const memoizeTimeout = (fn: (arg0: any) => Promise<any>, time: number) => {
+  let cache: Record<string, any> = {};
 
-  return async (...args) => {
+  // @ts-ignore
+  return async (...args: any) => {
     //Create hash.
-    const n =  "SHOKO"; // btoa(args);
+    const n = "SHOKO"; // btoa(args);
 
     //Find in cache or store new values.
     if (!(n in cache)) {
-      console.log("Creating cache");
+      // console.log("Creating cache");
+      // @ts-ignore
       cache[n] = fn(...args).then((r) => {
         //Erase cache.
         setTimeout(() => {
@@ -25,14 +27,14 @@ const memoizeTimeout = (fn, time) => {
         return r;
       });
     } else {
-      console.log("Already in cache");
+      // console.log("Already in cache");
     }
     return cache[n];
   };
 };
 
 export interface BChainProvider {
-  update(arg0: string, _hash: string);
+  update(arg0: string, _hash: string): void; // TODO
   readData(contractAddr: BChainAddress): Promise<BChainData>;
 }
 
@@ -51,7 +53,7 @@ class InMemoryMemPool implements MemPool {
   }
 
   async getContents(): Promise<MemPoolContents> {
-    const dataByTopic = {};
+    const dataByTopic: Record<string, any> = {};
 
     this.#data.forEach(([_, k, v]) => {
       if (!dataByTopic[k]) dataByTopic[k] = [];
@@ -97,11 +99,11 @@ export class RootWriter {
   #ipfsProvider: IPFSProvider;
   #bchainProvider: BChainProvider;
   #rootContract: string;
-  _hash: IPFSHash;
-  #topicsRootDFile: MutableDFile<IPFSHash>;
+  _hash!: IPFSHash;
+  #topicsRootDFile!: MutableDFile<IPFSHash>;
   #mempool: MemPool;
-  #topicsDFiles: { [k: string]: string };
-  #memoizedMempool: (...args: any[]) => Promise<any>;
+  #topicsDFiles!: { [k: string]: string };
+  #memoizedMempool!: (...args: any[]) => Promise<any>;
 
   constructor(
     ipfsProvider: IPFSProvider,
@@ -112,9 +114,9 @@ export class RootWriter {
     this.#bchainProvider = bchainProvider;
     this.#rootContract = rootContract;
     this.#mempool = new IPFSClusterMempool({
-      pinApi: "http://localhost:9097",
-      rpcApi: "http://localhost:9094",
-      gw: "http://127.0.0.1:8080/ipfs",
+      pinApi: "http://3.16.42.100:9097",
+      rpcApi: "http://3.16.42.100:9094",
+      gw: "http://3.16.42.100/ipfs",
     });
   }
 
@@ -161,16 +163,16 @@ export class RootWriter {
       toHash,
       ipfsProvider: this.#ipfsProvider,
     });
-    console.log(
-      "topic",
-      topic,
-      "fromhash",
-      fromHash,
-      "mempool",
-      mempoolContents.length,
-      "storage",
-      storageContents.length
-    );
+    // console.log(
+    //   "topic",
+    //   topic,
+    //   "fromhash",
+    //   fromHash,
+    //   "mempool",
+    //   mempoolContents.length,
+    //   "storage",
+    //   storageContents.length
+    // );
     return {
       data: [...storageContents, ...mempoolContents],
       hash: fromHash,
@@ -187,9 +189,13 @@ export class RootWriter {
 
   async onEpoch() {
     if (this.isInEpoch) return;
+    console.time("In epoch");
+    console.timeLog("In epoch", "starting mempool dump");
     this.isInEpoch = true;
     const { contents: mempoolContents, onDone: onMempoolDone } =
       await this.#mempool.dump();
+
+    console.timeLog("In epoch", "mempooldump");
 
     if (Object.keys(mempoolContents).length > 0) {
       const latestTopics = this.#topicsRootDFile.readLatest();
@@ -206,15 +212,20 @@ export class RootWriter {
         })
       );
 
+      console.timeLog("In epoch", "read topic");
+
       const { hash } = await this.#topicsRootDFile.write(
         Object.fromEntries(updatedHashes)
       );
-      console.log("Wrote" + hash);
+
+      console.timeLog("In epoch", "write master hash " + hash);
       this.#bchainProvider.update(this.#rootContract, hash);
       this._hash = hash;
       this.#topicsDFiles = this.#topicsRootDFile.readLatest();
       console.log(this.#topicsDFiles, "before cleaning mempool");
-      onMempoolDone();
+      await onMempoolDone();
+      console.timeLog("In epoch", "clear deadpool");
+      console.timeEnd("In epoch");
     }
     this.isInEpoch = false;
   }
@@ -237,3 +248,6 @@ export class RootWriter {
     console.log("================================\n\n");
   }
 }
+
+const sleep = async (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));

@@ -1,4 +1,4 @@
-import { IPFSProvider } from "./dfile";
+import { IPFSHash, IPFSProvider } from "./dfile";
 import axios from "axios";
 type IPFSClusterProviderOpts = {
   rpcApi: string;
@@ -23,13 +23,34 @@ export class IPFSClusterProvider implements IPFSProvider {
           "Content-Type": "multipart/form-data",
         },
       });
-      await axios.post(this.#opts.rpcApi + `/pins/${resp.data.cid}`);
+      // await axios.post(this.#opts.rpcApi + `/pins/${resp.data.cid}`);
       return resp.data.cid;
     } catch (e) {
       console.error(e);
       throw e;
     }
   }
+  
+  async appendMultiple(params: [topic: string, data: any][]): Promise<IPFSHash[]> {
+    const fd = new FormData();
+    params.forEach(([topic, data], i) => {
+      fd.append(`file${i}`, data);
+    });
+    try {
+      const resp = await axios.post(this.#opts.rpcApi + "/add", fd, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      // await axios.post(this.#opts.rpcApi + `/pins/${resp.data.cid}`);
+      console.log(resp.data, "Shahar1")
+      return resp.data.cid;
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  }
+
   async read(hash: string): Promise<string> {
     if (hash === "ROOT_HASH123") return JSON.parse('{"data": {}, "prev": null}');
     const resp = await axios.get(`${this.#opts.gw}/${hash}`);
